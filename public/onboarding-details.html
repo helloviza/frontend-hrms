@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Onboarding Details</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-store" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        background: #f6f8fa;
+        padding: 2rem;
+      }
+      .brand-logo {
+        height: 40px;
+      }
+      .brand {
+        color: #00477f;
+        font-weight: 700;
+      }
+      .status-badge {
+        font-weight: 600;
+        padding: 0.4rem 0.75rem;
+        border-radius: 30px;
+        font-size: 0.9rem;
+        text-transform: capitalize;
+      }
+      .status-invited { background-color: #fff3cd; color: #664d03; }
+      .status-in-progress { background-color: #cff4fc; color: #055160; }
+      .status-submitted { background-color: #e2e3ff; color: #2f2f9e; }
+      .status-approved { background-color: #d1e7dd; color: #0f5132; }
+      .status-rejected { background-color: #f8d7da; color: #842029; }
+      .status-expired { background-color: #ececec; color: #555; }
+      .section-title {
+        color: #00477f;
+        font-weight: 600;
+        margin-bottom: 1rem;
+      }
+      .info-card {
+        border-radius: 10px;
+        border: none;
+        background: #ffffff;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+      }
+      .key { font-weight: 600; color: #495057; }
+      .value { color: #111; word-break: break-word; }
+      .nested {
+        border-left: 3px solid #d06549;
+        padding-left: 0.75rem;
+        margin-top: 0.25rem;
+      }
+      footer {
+        text-align: center;
+        font-size: 0.85rem;
+        margin-top: 3rem;
+        color: #777;
+      }
+      @media print {
+        nav, header, footer, #printBtn { display: none !important; }
+        body { background: white !important; }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header class="d-flex align-items-center justify-content-between mb-3">
+        <div class="d-flex align-items-center gap-3">
+          <img src="/assets/logo.png" alt="PlumTrips" class="brand-logo" />
+          <h3 class="brand mb-0">PlumTrips HRMS</h3>
+        </div>
+        <button id="printBtn" class="btn btn-outline-primary btn-sm">
+          <i class="bi bi-printer"></i> Print / PDF
+        </button>
+      </header>
+
+      <div id="loader" class="text-center mt-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-3 text-secondary">Loading details...</p>
+      </div>
+
+      <div id="error" class="alert alert-danger d-none"></div>
+
+      <div id="content" class="d-none">
+        <div class="mb-3">
+          <span id="type-badge" class="badge bg-secondary me-2"></span>
+          <span id="status-badge" class="status-badge"></span>
+        </div>
+
+        <!-- Tabs -->
+        <ul class="nav nav-tabs" id="detailsTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="basic-tab" data-bs-toggle="tab" data-bs-target="#basic" type="button">
+              <i class="bi bi-person-badge me-1"></i> Basic Info
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="form-tab" data-bs-toggle="tab" data-bs-target="#form" type="button">
+              <i class="bi bi-card-checklist me-1"></i> Form Details
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="docs-tab" data-bs-toggle="tab" data-bs-target="#docs" type="button">
+              <i class="bi bi-paperclip me-1"></i> Documents
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="meta-tab" data-bs-toggle="tab" data-bs-target="#meta" type="button">
+              <i class="bi bi-clock-history me-1"></i> Meta
+            </button>
+          </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content mt-4">
+          <div class="tab-pane fade show active" id="basic">
+            <div id="basic-info" class="row g-3"></div>
+          </div>
+
+          <div class="tab-pane fade" id="form">
+            <div id="payload-info" class="row g-3"></div>
+          </div>
+
+          <div class="tab-pane fade" id="docs">
+            <ul id="doc-list" class="list-unstyled"></ul>
+          </div>
+
+          <div class="tab-pane fade" id="meta">
+            <div id="meta-info" class="row g-3"></div>
+          </div>
+        </div>
+      </div>
+
+      <footer>PlumTrips HRMS © 2025 | Confidential Data</footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      const token = new URLSearchParams(window.location.search).get("token");
+      const loader = document.getElementById("loader");
+      const errorDiv = document.getElementById("error");
+      const contentDiv = document.getElementById("content");
+
+      document.getElementById("printBtn").addEventListener("click", () => window.print());
+
+      if (!token) showError("Missing token in URL");
+      else
+        fetch(`/api/onboarding/public/${token}/details`, { cache: "no-store" })
+          .then((r) => r.json())
+          .then((d) => (d.error ? showError(d.error) : renderData(d)))
+          .catch((e) => showError(e.message));
+
+      function showError(msg) {
+        loader.classList.add("d-none");
+        errorDiv.classList.remove("d-none");
+        errorDiv.textContent = "Error: " + msg;
+      }
+
+      function renderData(d) {
+        loader.classList.add("d-none");
+        contentDiv.classList.remove("d-none");
+
+        const statusKey = (d.status || "unknown").toLowerCase().replace(/\s+/g, "-");
+        const statusBadge = document.getElementById("status-badge");
+        statusBadge.textContent = d.status || "Unknown";
+        statusBadge.classList.add("status-" + statusKey);
+
+        const typeBadge = document.getElementById("type-badge");
+        typeBadge.textContent = (d.type || "UNKNOWN").toUpperCase();
+        typeBadge.className = "badge";
+        if (d.type === "vendor") typeBadge.classList.add("bg-warning", "text-dark");
+        else if (d.type === "business") typeBadge.classList.add("bg-info", "text-dark");
+        else typeBadge.classList.add("bg-primary");
+
+        populateRows("basic-info", {
+          Name: d.name,
+          Email: d.email,
+          Type: d.type,
+          Ticket: d.token,
+        });
+
+        const payload = d.payload || {};
+        if (Object.keys(payload).length) populateRows("payload-info", payload);
+
+        const docs = d.documents || [];
+        if (docs.length) {
+          const docList = document.getElementById("doc-list");
+          docs.forEach((doc) => {
+            const li = document.createElement("li");
+            li.innerHTML = `<i class="bi bi-file-earmark-text me-2 text-secondary"></i>
+              <a href="${doc.url}" class="link-primary" target="_blank">${doc.name || "Document"}</a>`;
+            docList.appendChild(li);
+          });
+        }
+
+        populateRows("meta-info", {
+          Status: d.status,
+          Submitted: d.submittedAt ? new Date(d.submittedAt).toLocaleString() : "—",
+          Updated: d.updatedAt ? new Date(d.updatedAt).toLocaleString() : "—",
+        });
+      }
+
+      function populateRows(containerId, obj) {
+        const c = document.getElementById(containerId);
+        c.innerHTML = "";
+        Object.entries(obj).forEach(([k, v]) => {
+          const col = document.createElement("div");
+          col.className = "col-md-6";
+          col.innerHTML = formatEntry(k, v);
+          c.appendChild(col);
+        });
+      }
+
+      function formatEntry(key, val) {
+        if (val && typeof val === "object" && !Array.isArray(val)) {
+          const inner = Object.entries(val)
+            .map(([k, v]) => `<div><span class='key'>${k}:</span> <span class='value'>${v ?? "—"}</span></div>`)
+            .join("");
+          return `<div class='p-3 bg-white border rounded'>
+              <div class='key mb-1'>${key}</div>
+              <div class='nested small text-muted'>${inner}</div>
+            </div>`;
+        }
+        return `<div class='p-3 bg-white border rounded'>
+            <div class='key mb-1'>${key}</div>
+            <div class='value'>${val ?? "—"}</div>
+          </div>`;
+      }
+    </script>
+  </body>
+</html>

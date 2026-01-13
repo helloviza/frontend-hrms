@@ -1,0 +1,84 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f7f8ff;
+  --card: #ffffffcc;
+  --stroke: #ebeaf5;
+  --ink: #0b0b10;
+  --accent: #b8b3ff;  /* lavender */
+  --accent-2: #9ef0ff; /* aqua */
+  --accent-3: #4cffb0; /* neon */
+}
+
+html, body, #root { height: 100%; }
+body {
+  @apply bg-mist text-ink;
+  background-image: theme("backgroundImage.gradient-hero"), theme("backgroundImage.grid-dots");
+  background-size: auto, theme("backgroundSize.dots");
+  background-attachment: fixed, fixed;
+  background-position: 0 0, 0 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- Reusable “GenZ vibe” primitives --- */
+@layer components {
+  .glass {
+    @apply bg-white/70 backdrop-blur border border-white/40 shadow-soft rounded-2xl;
+  }
+  .card {
+    @apply glass p-4 md:p-5 hover:shadow-glow transition-shadow;
+  }
+  .chip {
+    @apply px-3 py-1 rounded-full border border-white/40 bg-white/60 backdrop-blur text-sm;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-xl font-semibold transition-transform active:translate-y-[1px];
+  }
+  .btn-primary {
+    @apply btn text-ink;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    box-shadow: 0 8px 24px rgba(176,108,255,.35);
+  }
+  .btn-ghost { @apply btn bg-white/60 border border-white/40 hover:bg-white; }
+  .btn-danger { @apply btn text-white bg-rose-500 hover:bg-rose-600 shadow-soft; }
+
+  .nav-pill {
+    @apply chip hover:bg-white hover:shadow-soft transition-all;
+  }
+  .nav-active {
+    box-shadow: 0 10px 30px -10px rgba(176,108,255,.45);
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  }
+
+  .bg-neon { background-color: var(--accent-3); }
+  .bg-lavender { background-color: var(--accent); }
+  .text-ink { color: var(--ink); }
+}
+
+/* Subtle separators that feel premium */
+.divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(176,108,255,.3),
+    rgba(158,240,255,.3),
+    transparent
+  );
+}
+
+/* Fancy skeleton shimmer */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,.6) 40%,
+    rgba(255,255,255,0) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2.5s linear infinite;
+  @apply rounded-xl;
+}
