@@ -206,18 +206,20 @@ function MegaPanel({
     >
       <div className="bg-white border-b border-slate-100 shadow-lg shadow-slate-200/80">
         <div className="w-full h-px bg-slate-100" />
-        <div className="grid grid-cols-3 gap-1 max-w-3xl mx-auto py-4 px-8">
+        <div className="grid grid-cols-3 gap-x-2 gap-y-0 max-w-3xl mx-auto py-4 px-8">
           {visibleItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               onClick={onClose}
-              className="group/link block px-4 py-3 rounded-xl hover:bg-slate-50 transition-colors duration-150 cursor-pointer"
+              className="group/link block px-4 py-3 rounded-xl hover:bg-[#00477f]/5 transition-colors duration-150 cursor-pointer"
             >
-              <div className="text-[13px] text-slate-800 font-medium group-hover/link:text-[#00477f]">{item.label}</div>
-              {item.description && (
-                <div className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{item.description}</div>
-              )}
+              <div className="border-l-2 border-transparent group-hover/link:border-[#00477f] pl-3 transition-all duration-150">
+                <div className="text-[13px] text-slate-800 font-medium group-hover/link:text-[#00477f]">{item.label}</div>
+                {item.description && (
+                  <div className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{item.description}</div>
+                )}
+              </div>
             </NavLink>
           ))}
         </div>
