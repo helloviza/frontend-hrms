@@ -52,11 +52,8 @@ export default function Login() {
 
       {/* Top bar */}
       <div className="flex items-center justify-between px-8 py-5">
-        <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="Plumtrips" className="h-7" onError={e => (e.currentTarget.style.display = "none")} />
-          <span className="text-[#00477f] text-lg font-semibold">Plumtrips</span>
-        </div>
-        <span className="text-xs text-slate-400">Powered by Pluto.ai</span>
+        <img src="/assets/logo.png" alt="Plumtrips" className="h-7" />
+        <img src="/assets/plutologo.png" alt="Pluto.ai" className="h-6 opacity-60" />
       </div>
 
       {/* Main content */}
@@ -154,33 +151,12 @@ export default function Login() {
       <div className="pb-8 flex flex-col items-center gap-5">
 
         {/* Logo row */}
-        <div className="flex items-center gap-6 opacity-30 hover:opacity-50 transition-opacity">
-          {/* NVIDIA */}
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-sm bg-green-600"></div>
-            <span className="text-[12px] font-bold text-slate-600 tracking-tight">NVIDIA</span>
-            <span className="text-[9px] text-slate-400 font-medium">INCEPTION</span>
-          </div>
+        <div className="flex items-center gap-6 opacity-50 hover:opacity-80 transition-opacity">
+          <img src="/assets/nvidia.png" alt="NVIDIA Inception" className="h-5 grayscale hover:grayscale-0 transition-all" />
           <div className="w-px h-5 bg-slate-200"></div>
-          {/* Google */}
-          <div className="flex items-center gap-1">
-            <span className="text-[12px] font-bold" style={{
-              background: "linear-gradient(90deg,#4285F4,#EA4335,#FBBC05,#34A853)",
-              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent"
-            }}>Google</span>
-            <span className="text-[9px] text-slate-400 font-medium">FOR STARTUPS</span>
-          </div>
+          <img src="/assets/Google_for_Startups_logo.svg" alt="Google for Startups" className="h-5 grayscale hover:grayscale-0 transition-all" />
           <div className="w-px h-5 bg-slate-200"></div>
-          {/* Startup India */}
-          <div className="flex items-center gap-1">
-            <div className="flex gap-0.5">
-              <div className="w-2 h-3 rounded-sm bg-orange-500"></div>
-              <div className="w-2 h-3 rounded-sm bg-white border border-slate-200"></div>
-              <div className="w-2 h-3 rounded-sm bg-green-600"></div>
-            </div>
-            <span className="text-[12px] font-bold text-slate-600 tracking-tight">Startup India</span>
-            <span className="text-[9px] text-slate-400">· DPIIT</span>
-          </div>
+          <img src="/assets/DPIITLOGO.png" alt="Startup India · DPIIT" className="h-5 grayscale hover:grayscale-0 transition-all" />
         </div>
 
         <p className="text-[11px] text-slate-300">© 2026 Plumtrips. All rights reserved.</p>
