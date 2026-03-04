@@ -1092,33 +1092,74 @@ function StructuredDocsStep({
   files,
   setFiles,
   slots,
+  onboardingType,
 }: {
   files: Upload[];
   setFiles: (u: Upload[] | ((s: Upload[]) => Upload[])) => void;
   slots: Slot[];
+  onboardingType: string;
 }) {
+  const [uploading, setUploading] = useState<Record<string, boolean>>({});
+
   const byType: Record<string, Upload[]> = {};
   for (const f of files) {
     const t = f.docType || "others";
     (byType[t] ||= []).push(f);
   }
 
-  function onAdd(typeKey: string, list: FileList | null) {
+  async function onAdd(typeKey: string, list: FileList | null) {
     if (!list || list.length === 0) return;
-    const incoming: Upload[] = Array.from(list).map((f) => ({
-      name: f.name,
-      key: f.name,
-      file: f,
-      docType: typeKey,
-    }));
-    setFiles((s) => [...s, ...incoming]);
+    setUploading((u) => ({ ...u, [typeKey]: true }));
+    try {
+      for (const f of Array.from(list)) {
+        try {
+          const presign = await api.post("/onboarding/upload/presign", {
+            filename: f.name,
+            contentType: f.type || "application/octet-stream",
+            kind: typeKey,
+            type: onboardingType,
+          }) as any;
+
+          if (!presign?.objectKey) {
+            alert(`Failed to prepare upload for ${f.name}`);
+            continue;
+          }
+
+          if (presign.upload?.method === "POST") {
+            const { url, fields } = presign.upload;
+            const formData = new FormData();
+            Object.entries(fields as Record<string, string>).forEach(([k, v]) =>
+              formData.append(k, v)
+            );
+            formData.append("Content-Type", f.type);
+            formData.append("file", f);
+            await fetch(url, { method: "POST", body: formData });
+          } else {
+            await fetch(presign.upload.url, {
+              method: "PUT",
+              body: f,
+              headers: { "Content-Type": f.type || "application/octet-stream" },
+            });
+          }
+
+          setFiles((s) => [
+            ...s,
+            { name: f.name, key: presign.objectKey, docType: typeKey },
+          ]);
+        } catch {
+          alert(`Upload failed for ${f.name}. Please try again.`);
+        }
+      }
+    } finally {
+      setUploading((u) => ({ ...u, [typeKey]: false }));
+    }
   }
 
   function onDrop(typeKey: string, e: DragEvent<HTMLDivElement>) {
     e.preventDefault();
     e.stopPropagation();
     const list = e.dataTransfer?.files;
-    onAdd(typeKey, list);
+    void onAdd(typeKey, list);
   }
 
   function removeAt(typeKey: string, idx: number) {
@@ -1161,20 +1202,26 @@ function StructuredDocsStep({
                 }}
                 onDrop={(e) => onDrop(slot.key, e)}
               >
-                <div className="flex flex-col sm:flex-row items-center gap-3">
-                  <Input
-                    type="file"
-                    accept={slot.accept}
-                    multiple={!!slot.multiple}
-                    onChange={(e) => {
-                      onAdd(slot.key, e.currentTarget.files);
-                      e.currentTarget.value = "";
-                    }}
-                  />
-                  <div className="text-xs text-zinc-600">
-                    Drop files here or use the picker{slot.multiple ? " (multiple allowed)" : ""}.
+                {uploading[slot.key] ? (
+                  <div className="text-xs text-[#00477f] py-2 text-center">
+                    Uploading…
                   </div>
-                </div>
+                ) : (
+                  <div className="flex flex-col sm:flex-row items-center gap-3">
+                    <Input
+                      type="file"
+                      accept={slot.accept}
+                      multiple={!!slot.multiple}
+                      onChange={(e) => {
+                        void onAdd(slot.key, e.currentTarget.files);
+                        e.currentTarget.value = "";
+                      }}
+                    />
+                    <div className="text-xs text-zinc-600">
+                      Drop files here or use the picker{slot.multiple ? " (multiple allowed)" : ""}.
+                    </div>
+                  </div>
+                )}
               </div>
 
               {list.length > 0 && (
@@ -1571,7 +1618,7 @@ function EmployeeSteps({
   }
 
   if (stepKey === "docs")
-    return <StructuredDocsStep files={files} setFiles={setFiles} slots={EMPLOYEE_DOC_SLOTS as unknown as Slot[]} />;
+    return <StructuredDocsStep files={files} setFiles={setFiles} slots={EMPLOYEE_DOC_SLOTS as unknown as Slot[]} onboardingType="employee" />;
 
   if (stepKey === "review") return <ReviewEmployee core={core} files={files} />;
   return <div className="text-sm text-zinc-600">Loading section…</div>;
@@ -1783,7 +1830,7 @@ function VendorSteps({
   }
 
   if (stepKey === "docs")
-    return <StructuredDocsStep files={files} setFiles={setFiles} slots={VENDOR_DOC_SLOTS as unknown as Slot[]} />;
+    return <StructuredDocsStep files={files} setFiles={setFiles} slots={VENDOR_DOC_SLOTS as unknown as Slot[]} onboardingType="vendor" />;
   if (stepKey === "review") return <ReviewVendor core={core} files={files} />;
   return <div className="text-sm text-zinc-600">Loading section…</div>;
 }
@@ -2032,7 +2079,7 @@ function BusinessSteps({
   }
 
   if (stepKey === "docs") {
-    return <StructuredDocsStep files={files} setFiles={setFiles} slots={BUSINESS_DOC_SLOTS as unknown as Slot[]} />;
+    return <StructuredDocsStep files={files} setFiles={setFiles} slots={BUSINESS_DOC_SLOTS as unknown as Slot[]} onboardingType="business" />;
   }
 
   if (stepKey === "review") {
