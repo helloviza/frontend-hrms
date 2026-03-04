@@ -51,14 +51,14 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Workspace",
     gate: isCustomer,
     items: [
-      { label: "My Workspace", to: "/profile/customer", description: "Your dashboard, travellers & company context" },
-      { label: "Travel Analytics", to: TRAVEL_DASH, description: "Spend, services, exports & trends" },
-      { label: "Company & Billing", to: "/customer/company", description: "Company profile, GST, billing preferences" },
-      { label: "Contacts & Approvals", to: "/customer/contacts", description: "Approvers, travellers & permissions" },
-      { label: "Agreements", to: "/customer/agreements", description: "MSA, SLAs and service terms" },
-      { label: "Security", to: "/customer/security", description: "Password, sessions & access rules" },
-      { label: "Org Chart", to: "/orgchart", description: "View reporting structure" },
-      { label: "Policies", to: "/policies", description: "Company policy library" },
+      { label: "My Workspace", to: "/profile/customer", description: "Your company's travel desk and booking overview" },
+      { label: "Travel Analytics", to: TRAVEL_DASH, description: "Analyse your company's travel spend and patterns" },
+      { label: "Company & Billing", to: "/customer/company", description: "Manage company details, billing and invoices" },
+      { label: "Contacts & Approvals", to: "/customer/contacts", description: "Manage travel approvers and approval workflows" },
+      { label: "Agreements", to: "/customer/agreements", description: "View and manage your corporate travel agreements" },
+      { label: "Security", to: "/customer/security", description: "Manage access, passwords and security settings" },
+      { label: "Org Chart", to: "/orgchart", description: "Your company's organisational structure" },
+      { label: "Policies", to: "/policies", description: "Company travel policies and guidelines" },
     ],
   },
   {
@@ -66,9 +66,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Approvals",
     gate: (u) => isCustomer(u) || isApprover(u),
     items: [
-      { label: "New Request", to: "/customer/approvals/new", description: "Create a new travel approval request" },
-      { label: "My Requests", to: "/customer/approvals/mine", description: "Track status & history" },
-      { label: "Approver Inbox", to: "/customer/approvals/inbox", description: "Approve / decline requests" },
+      { label: "New Request", to: "/customer/approvals/new", description: "Raise a new travel request for approval" },
+      { label: "My Requests", to: "/customer/approvals/mine", description: "Track status of your submitted travel requests" },
+      { label: "Approver Inbox", to: "/customer/approvals/inbox", description: "Review and approve pending travel requests" },
     ],
   },
   {
@@ -76,10 +76,10 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Vendor",
     gate: isVendor,
     items: [
-      { label: "My Vendor Profile", to: "/profile/vendor", description: "Your service details, docs & compliance" },
-      { label: "Travel Analytics", to: TRAVEL_DASH, description: "Service-wise volume & spend insights" },
-      { label: "Org Chart", to: "/orgchart", description: "View reporting structure" },
-      { label: "Policies", to: "/policies", description: "Company policy library" },
+      { label: "My Vendor Profile", to: "/profile/vendor", description: "Manage your vendor profile and service offerings" },
+      { label: "Travel Analytics", to: TRAVEL_DASH, description: "View booking volumes and revenue analytics" },
+      { label: "Org Chart", to: "/orgchart", description: "Your organisation's reporting structure" },
+      { label: "Policies", to: "/policies", description: "Service agreements and operational policies" },
     ],
   },
   {
@@ -87,13 +87,13 @@ const NAV_GROUPS: NavGroup[] = [
     label: "My Space",
     gate: isStaff,
     items: [
-      { label: "My Profile", to: "/profile/me", description: "Personal details, documents & preferences" },
-      { label: "Travel Analytics", to: TRAVEL_DASH, description: "Dashboard with filters & exports" },
-      { label: "Punch", to: "/attendance/punch", description: "Start / stop workday and view live status" },
-      { label: "Attendance Reports", to: "/attendance/reports", description: "History of in/out and regularisation" },
-      { label: "Apply Leave", to: "/leaves/apply", description: "Apply for leave or work-from-home" },
-      { label: "My Leaves", to: "/leaves/my", description: "Track approvals and balances" },
-      { label: "Holidays", to: "/holidays", description: "Company holiday calendar" },
+      { label: "My Profile", to: "/profile/me", description: "Manage your personal details, photo and contact info" },
+      { label: "Travel Analytics", to: TRAVEL_DASH, description: "View your booking history and spend patterns" },
+      { label: "Punch", to: "/attendance/punch", description: "Record your daily attendance check-in and check-out" },
+      { label: "Attendance Reports", to: "/attendance/reports", description: "View your monthly attendance summary and history" },
+      { label: "Apply Leave", to: "/leaves/apply", description: "Submit a new leave request for approval" },
+      { label: "My Leaves", to: "/leaves/my", description: "Track your leave balance and request history" },
+      { label: "Holidays", to: "/holidays", description: "View company holidays and the annual calendar" },
     ],
   },
   {
@@ -101,23 +101,23 @@ const NAV_GROUPS: NavGroup[] = [
     label: "People",
     gate: (u) => isStaff(u) && staffHas(["Manager", "HR", "Admin", "SuperAdmin"])(u),
     items: [
-      { label: "Manager Dashboard", to: "/dashboard/manager", description: "Team overview, approvals & alerts" },
+      { label: "Manager Dashboard", to: "/dashboard/manager", description: "Overview of your team's attendance and leave status" },
       {
         label: "Team Profiles",
         to: "/profile/team",
-        description: "Full employee master data",
+        description: "View and manage profiles of your direct reports",
         gate: staffHas(["Manager", "HR", "Admin", "SuperAdmin"]),
       },
       {
         label: "Vendor Profiles",
         to: "/profile/vendors",
-        description: "HRMS view of onboarded vendors",
+        description: "Access vendor details, documents and service history",
         gate: staffHas(["HR", "Admin", "SuperAdmin"]),
       },
       {
         label: "Business Profiles",
         to: "/profile/businesses",
-        description: "Client / business accounts directory",
+        description: "View corporate client profiles and onboarding documents",
         gate: staffHas(["HR", "Admin", "SuperAdmin"]),
       },
     ],
@@ -127,9 +127,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Onboarding",
     gate: (u) => isStaff(u) && staffHas(["HR", "Admin", "SuperAdmin"])(u),
     items: [
-      { label: "Onboarding Cockpit", to: "/vendors/onboard", description: "Launch and track onboarding links" },
-      { label: "Pipeline", to: "/vendors/pipeline", description: "Active onboarding pipeline & statuses" },
-      { label: "Master Data", to: "/vendors/master-data", description: "Approved vendor master records" },
+      { label: "Onboarding Cockpit", to: "/vendors/onboard", description: "Send invitations and track new joinee onboarding" },
+      { label: "Pipeline", to: "/vendors/pipeline", description: "Monitor all active onboarding applications and their status" },
+      { label: "Master Data", to: "/vendors/master-data", description: "Manage service categories, routes and reference data" },
     ],
   },
   {
@@ -140,11 +140,11 @@ const NAV_GROUPS: NavGroup[] = [
       {
         label: "HR/Admin Workspace",
         to: "/dashboard/hr-admin",
-        description: "HR cockpit with HR Copilot & insights",
+        description: "Full HR dashboard with headcount, leaves and reports",
         gate: staffHas(["HR", "Admin", "SuperAdmin"]),
       },
-      { label: "Org Chart", to: "/orgchart", description: "Visual reporting structure" },
-      { label: "Policies", to: "/policies", description: "HR & company policy library" },
+      { label: "Org Chart", to: "/orgchart", description: "Visual map of your company's reporting structure" },
+      { label: "Policies", to: "/policies", description: "Access and manage company HR policies and documents" },
     ],
   },
   {
@@ -155,7 +155,7 @@ const NAV_GROUPS: NavGroup[] = [
       {
         label: "User Creation",
         to: ADMIN_USERS,
-        description: "Create users & manage access",
+        description: "Create new user accounts and assign roles",
       },
     ],
   },
@@ -164,8 +164,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Administrative",
     gate: (u) => isStaff(u) && staffHas(["Admin", "SuperAdmin"])(u),
     items: [
-      { label: "Admin Analytics", to: "/admin/analytics", description: "Headcount, leaves, attendance analytics" },
-      { label: "Admin Reports", to: "/admin/reports", description: "Exportable HR & compliance reports" },
+      { label: "Admin Analytics", to: "/admin/analytics", description: "Company-wide travel spend and booking analytics" },
+      { label: "Admin Reports", to: "/admin/reports", description: "Download detailed reports for payroll, attendance and leaves" },
     ],
   },
 ];
@@ -205,15 +205,18 @@ function MegaPanel({
       onMouseLeave={onClose}
     >
       <div className="backdrop-blur-xl bg-white/90 border-b border-black/5 shadow-2xl shadow-black/10 py-6 px-16">
-        <div className="flex items-start flex-wrap gap-x-8 gap-y-1">
+        <div className="flex items-start flex-wrap gap-x-2 gap-y-1">
           {visibleItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               onClick={onClose}
-              className="text-[13px] text-[#1d1d1f] hover:text-black/50 transition-colors duration-150 py-1 block"
+              className="group/link block px-3 py-2 rounded-lg hover:bg-black/5 transition-colors duration-150"
             >
-              {item.label}
+              <div className="text-[13px] text-[#1d1d1f] group-hover/link:text-black font-medium">{item.label}</div>
+              {item.description && (
+                <div className="text-[11px] text-[#1d1d1f]/40 mt-0.5">{item.description}</div>
+              )}
             </NavLink>
           ))}
         </div>
