@@ -1,21 +1,28 @@
 // apps/frontend/src/components/layout/Header.tsx
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { hasAnyRole, Role } from "../../lib/rbac";
 
-/** Lux labels */
+/* -------------------------------------------------------------------------- */
+/* Role label map                                                              */
+/* -------------------------------------------------------------------------- */
+
 const LABEL = {
-  EMPLOYEE: "Specialist",
+  EMPLOYEE: "Employee",
   MANAGER: "Manager",
-  HR: "People Strategist",
-  ADMIN: "System Steward",
-  SUPERADMIN: "Platform Governor",
-  VENDOR: "Service Atelier",
-  CUSTOMER: "Workspace Leader", // L0 Steward Leader
-  APPROVER: "Approver", // L2
-  REQUESTER: "Crew Member", // L1 Requestor
+  HR: "HR",
+  ADMIN: "Admin",
+  SUPERADMIN: "Super Admin",
+  VENDOR: "Vendor",
+  CUSTOMER: "Workspace Leader",
+  APPROVER: "Approver",
+  REQUESTER: "Crew Member",
 };
+
+/* -------------------------------------------------------------------------- */
+/* Utility helpers                                                             */
+/* -------------------------------------------------------------------------- */
 
 function norm(v: any): string {
   return String(v ?? "")
@@ -28,13 +35,9 @@ function truthy(v: any) {
   return v === true || v === 1 || v === "1" || v === "true";
 }
 
-/**
- * Detect account kind beyond roles:
- */
 function detectUserKind(user: any): "VENDOR" | "CUSTOMER" | "STAFF" | "UNKNOWN" {
   if (!user) return "UNKNOWN";
 
-  // Vendor signals
   if (
     user.vendorId ||
     user.vendor_id ||
@@ -47,7 +50,6 @@ function detectUserKind(user: any): "VENDOR" | "CUSTOMER" | "STAFF" | "UNKNOWN" 
     return "VENDOR";
   }
 
-  // Customer/Business signals
   if (
     user.businessId ||
     user.business_id ||
@@ -69,7 +71,6 @@ function detectUserKind(user: any): "VENDOR" | "CUSTOMER" | "STAFF" | "UNKNOWN" 
     return "CUSTOMER";
   }
 
-  // String fields from auth payloads
   const candidates: any[] = [
     user.userType,
     user.type,
@@ -139,7 +140,6 @@ function isApprover(user: any): boolean {
   );
 }
 
-/** ✅ The agreed gate */
 function canAccessUserCreation(user: any): boolean {
   if (!user) return false;
 
@@ -156,43 +156,30 @@ function canAccessUserCreation(user: any): boolean {
   const isLeader =
     upper.includes("WORKSPACELEADER") ||
     upper.includes("WORKSPACE_LEADER") ||
-    // fallback: pure CUSTOMER with no REQUESTER/APPROVER we treat as L0:
     (detectUserKind(user) === "CUSTOMER" &&
       upper.includes("CUSTOMER") &&
       !upper.includes("REQUESTER") &&
       !upper.includes("APPROVER"));
   const isRequester = upper.includes("REQUESTER");
 
-  // Never for vendors
   if (kind === "VENDOR") return false;
 
-  // Staff privileged: HR/Admin/SuperAdmin
   if (kind === "STAFF" && hasAnyRole(user as any, ["HR", "Admin", "SuperAdmin"])) {
     return true;
   }
 
-  // Customer workspace users:
   if (kind === "CUSTOMER") {
-    // L2 approver can create users
     if (approver) return true;
-
-    // L0 Workspace Leader can create users
     if (isLeader) return true;
-
-    // L1 Requester should NOT see User Creation
     if (isRequester) return false;
-
-    // Any other weird combo → safe default: no access
     return false;
   }
 
-  // Approver staff (if any non-customer approver we detect)
   if (approver) return true;
 
   return false;
 }
 
-/** Header pill label */
 function deriveRoleLabel(user: any): string {
   if (!user) return LABEL.EMPLOYEE;
 
@@ -205,7 +192,6 @@ function deriveRoleLabel(user: any): string {
   if (user?.hrmsAccessLevel) roles.push(user.hrmsAccessLevel);
   const upper = roles.map(norm);
 
-  // Vendor always gets vendor label
   if (kind === "VENDOR") return LABEL.VENDOR;
 
   const approver = isApprover(user) || upper.includes("APPROVER");
@@ -218,22 +204,18 @@ function deriveRoleLabel(user: any): string {
       !upper.includes("REQUESTER") &&
       !upper.includes("APPROVER"));
 
-  // Customer-side labels: L0 / L1 / L2
   if (kind === "CUSTOMER") {
-    if (approver) return LABEL.APPROVER; // L2
-    if (isLeader) return LABEL.CUSTOMER; // L0
-    if (isRequester) return LABEL.REQUESTER; // L1
-    // Fallback: treat as leader if nothing else is tagged
+    if (approver) return LABEL.APPROVER;
+    if (isLeader) return LABEL.CUSTOMER;
+    if (isRequester) return LABEL.REQUESTER;
     return LABEL.CUSTOMER;
   }
 
-  // Staff labels
   if (upper.some((r) => r.includes("SUPERADMIN") || r.includes("SUPER_ADMIN"))) return LABEL.SUPERADMIN;
   if (upper.some((r) => r.includes("ADMIN"))) return LABEL.ADMIN;
   if (upper.some((r) => r.includes("HRADMIN") || r === "HR" || r.includes("HR"))) return LABEL.HR;
   if (upper.some((r) => r.includes("MANAGER"))) return LABEL.MANAGER;
 
-  // Default for all other staff
   return LABEL.EMPLOYEE;
 }
 
@@ -266,12 +248,10 @@ const staffHas =
   (u) =>
     hasAnyRole(u as any, roles);
 
-// Routes
 const TRAVEL_DASH = "/dashboard/travel-spend";
 const ADMIN_USERS = "/admin/users";
 
 const NAV_GROUPS: NavGroup[] = [
-  // ✅ Customer Workspace nav
   {
     id: "workspace",
     label: "Workspace",
@@ -287,8 +267,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Policies", to: "/policies", description: "Company policy library" },
     ],
   },
-
-  // ✅ Approvals nav for customers
   {
     id: "approvals",
     label: "Approvals",
@@ -299,11 +277,9 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Approver Inbox", to: "/customer/approvals/inbox", description: "Approve / decline requests" },
     ],
   },
-
-  // ✅ Vendor nav
   {
     id: "atelier",
-    label: "Service Atelier",
+    label: "Vendor",
     gate: isVendor,
     items: [
       { label: "My Vendor Profile", to: "/profile/vendor", description: "Your service details, docs & compliance" },
@@ -312,11 +288,9 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Policies", to: "/policies", description: "Company policy library" },
     ],
   },
-
-  // ✅ Staff nav
   {
     id: "me",
-    label: "My Realm & Moment",
+    label: "My Space",
     gate: isStaff,
     items: [
       { label: "My Profile", to: "/profile/me", description: "Personal details, documents & preferences" },
@@ -328,10 +302,9 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Holidays", to: "/holidays", description: "Company holiday calendar" },
     ],
   },
-
   {
     id: "people",
-    label: "Luxe Workforce Stewardship",
+    label: "People",
     gate: (u) => isStaff(u) && staffHas(["Manager", "HR", "Admin", "SuperAdmin"])(u),
     items: [
       { label: "Manager Dashboard", to: "/dashboard/manager", description: "Team overview, approvals & alerts" },
@@ -355,10 +328,9 @@ const NAV_GROUPS: NavGroup[] = [
       },
     ],
   },
-
   {
     id: "onboarding",
-    label: "Onboardings Management",
+    label: "Onboarding",
     gate: (u) => isStaff(u) && staffHas(["HR", "Admin", "SuperAdmin"])(u),
     items: [
       { label: "Onboarding Cockpit", to: "/vendors/onboard", description: "Launch and track onboarding links" },
@@ -366,7 +338,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Master Data", to: "/vendors/master-data", description: "Approved vendor master records" },
     ],
   },
-
   {
     id: "hrops",
     label: "HR Operations",
@@ -382,8 +353,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Policies", to: "/policies", description: "HR & company policy library" },
     ],
   },
-
-  // ✅ Access group visible to HR/Admin/SuperAdmin + WorkspaceLeader + Approver
   {
     id: "access",
     label: "Access",
@@ -396,7 +365,6 @@ const NAV_GROUPS: NavGroup[] = [
       },
     ],
   },
-
   {
     id: "admin",
     label: "Administrative",
@@ -408,29 +376,9 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-function GroupTrigger({
-  group,
-  isActive,
-  onOpen,
-}: {
-  group: NavGroup;
-  isActive: boolean;
-  onOpen: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onMouseEnter={onOpen}
-      onFocus={onOpen}
-      className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-        isActive ? "bg-black text-white shadow-sm" : "text-zinc-700 hover:bg-zinc-100"
-      }`}
-    >
-      <span>{group.label}</span>
-      <span className={`text-[9px] transition-transform ${isActive ? "rotate-180" : ""}`}>▾</span>
-    </button>
-  );
-}
+/* -------------------------------------------------------------------------- */
+/* Desktop dropdown panel                                                      */
+/* -------------------------------------------------------------------------- */
 
 function GroupPanel({
   group,
@@ -446,24 +394,24 @@ function GroupPanel({
 
   return (
     <div
-      className="absolute left-1/2 top-full z-30 mt-0 w-[560px] -translate-x-1/2 rounded-3xl border border-zinc-200 bg-white/95 p-3 shadow-xl shadow-black/5 backdrop-blur"
+      className="absolute left-1/2 top-full z-30 pt-2 w-56 -translate-x-1/2"
       onMouseLeave={onClose}
     >
-      <div className="grid grid-cols-2 gap-2">
+      <div className="bg-white border border-slate-200 rounded-xl shadow-lg py-1 min-w-48">
         {visibleItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
+            onClick={onClose}
             className={({ isActive }) =>
-              `flex flex-col rounded-2xl px-3 py-2 text-left text-xs transition ${
-                isActive ? "bg-zinc-900 text-white" : "bg-zinc-50 hover:bg-zinc-100"
+              `block px-4 py-2 text-sm transition ${
+                isActive
+                  ? "bg-slate-50 text-[#00477f] font-semibold"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-[#00477f]"
               }`
             }
           >
-            <span className="text-[11px] font-semibold">{item.label}</span>
-            {item.description && (
-              <span className="mt-0.5 text-[10px] text-zinc-500">{item.description}</span>
-            )}
+            {item.label}
           </NavLink>
         ))}
       </div>
@@ -472,59 +420,15 @@ function GroupPanel({
 }
 
 /* -------------------------------------------------------------------------- */
-/* Profile Insights strip (visible on /profile/*)                              */
+/* Header                                                                     */
 /* -------------------------------------------------------------------------- */
-
-function ProfileInsightsStrip({
-  kind,
-  onOpenAnalytics,
-}: {
-  kind: "VENDOR" | "CUSTOMER" | "STAFF" | "UNKNOWN";
-  onOpenAnalytics: () => void;
-}) {
-  const subtitle =
-    kind === "CUSTOMER"
-      ? "Track services, spend, travellers & downloads — built like an analytics suite."
-      : kind === "VENDOR"
-        ? "See service-wise activity & exports with clean, PowerBI-style filters."
-        : "Monitor spend trends, services mix and export reports in CSV/Excel.";
-
-  return (
-    <div className="border-t border-zinc-200 bg-white/70 backdrop-blur">
-      <div className="mx-auto max-w-7xl px-4 py-3">
-        <div className="flex flex-col gap-2 rounded-3xl border border-zinc-200 bg-gradient-to-r from-[#00477f]/10 via-white to-[#d06549]/10 p-3 shadow-sm md:flex-row md:items-center md:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 h-9 w-9 rounded-2xl bg-gradient-to-br from-[#00477f] to-emerald-400 shadow-sm" />
-            <div>
-              <div className="text-[11px] tracking-[0.22em] uppercase text-zinc-500">INSIGHTS</div>
-              <div className="text-sm font-semibold text-zinc-900">Travel Analytics Dashboard</div>
-              <div className="mt-0.5 text-[11px] text-zinc-600">{subtitle}</div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={onOpenAnalytics}
-              className="rounded-full bg-zinc-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-zinc-800"
-            >
-              Open Analytics
-            </button>
-            <span className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-[11px] text-zinc-700">
-              CSV / Excel Export • Date Range • Service Filters
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function Header() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const kind = detectUserKind(user as any);
   const roleLabel = useMemo(() => deriveRoleLabel(user as any), [user]);
@@ -536,7 +440,6 @@ export default function Header() {
     (user as any)?.sub ||
     "";
 
-  // Hide shell on auth + public flow routes
   const showShell = ![
     "/login",
     "/register",
@@ -548,112 +451,144 @@ export default function Header() {
   ].some((p) => location.pathname.startsWith(p));
   if (!showShell) return null;
 
-  const logoSrc = "/assets/logo.png";
-
-  const canOpenCopilot =
-    kind === "STAFF" && hasAnyRole(user as any, ["HR", "Admin", "SuperAdmin"]);
-  const copilotTarget =
-    kind === "CUSTOMER" ? "/profile/customer" : kind === "VENDOR" ? "/profile/vendor" : "/dashboard/hr-admin";
-
   const groups = NAV_GROUPS.filter((g) => g.gate(user as any));
-  const isProfileRoute = location.pathname.startsWith("/profile");
-
-  const showUserCreation = canAccessUserCreation(user as any);
 
   return (
- <header className="sticky top-0 z-[100] px-4 py-4 font-mono">
-  <div className="mx-auto max-w-7xl relative">
-    
-    {/* 1. BACKGROUND CHASSIS */}
-    <div className="absolute inset-0 bg-[#233D4D]/95 backdrop-blur-3xl rounded-[2.5rem] border border-white/20 shadow-[0_25px_80px_rgba(0,0,0,0.9)] overflow-visible">
-      <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-[scan_4s_linear_infinite]" />
-    </div>
+    <header className="sticky top-0 z-[100] bg-white border-b border-slate-200 shadow-sm">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-14">
 
-    <div className="relative flex items-center justify-between px-10 py-5">
-      
-      {/* 2. LOGO HUB */}
-      <div className="flex items-center gap-6 cursor-pointer group" onClick={() => navigate("/")}>
-        <div className="relative h-14 w-14 overflow-hidden rounded-full bg-white p-2 shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-          <img src={logoSrc} alt="Orbit" className="h-full w-full object-contain" />
-        </div>
-        <div className="flex flex-col">
-          <h1 className="text-2xl font-black italic tracking-tighter text-white">
-            Plum<span className="text-blue-400 not-italic ml-1 proper">ORBIT 🪐</span>
-          </h1>
-          <span className="text-[10px] font-black tracking-[0.4em] text-white proper">Your workforce. One orbit.</span>
-        </div>
-      </div>
+          {/* Logo */}
+          <div
+            className="flex items-center gap-2 cursor-pointer"
+            onClick={() => navigate("/")}
+          >
+            <img src="/assets/logo.png" alt="PlumTrips" className="h-7 w-auto" />
+            <span className="font-bold text-[#00477f] text-lg">PlumTrips</span>
+          </div>
 
-      {/* 3. CENTER NAVIGATION (The Fixed Logic) */}
-      <nav 
-        className="hidden lg:flex items-center gap-2 bg-black/40 p-1.5 rounded-full border border-white/10"
-        onMouseLeave={() => setOpenGroupId(null)}
-      >
-        {groups.map((group) => {
-          const isActive = openGroupId === group.id;
-          return (
-            <div key={group.id} className="relative">
-              {/* Trigger Button */}
-              <button
-                onMouseEnter={() => setOpenGroupId(group.id)}
-                className={`relative z-[101] px-6 py-2.5 text-[11px] font-black uppercase tracking-[0.2em] transition-all duration-300 rounded-full border ${
-                  isActive 
-                    ? "bg-blue-600 border-blue-400 text-white shadow-[0_0_25px_rgba(59,130,246,0.5)]" 
-                    : "border-transparent text-zinc-400 hover:text-white"
-                }`}
-              >
-                {group.label}
-              </button>
+          {/* Desktop nav */}
+          <nav
+            className="hidden lg:flex items-center gap-1"
+            onMouseLeave={() => setOpenGroupId(null)}
+          >
+            {groups.map((group) => {
+              const isOpen = openGroupId === group.id;
+              return (
+                <div key={group.id} className="relative">
+                  <button
+                    type="button"
+                    onMouseEnter={() => setOpenGroupId(group.id)}
+                    className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      isOpen
+                        ? "bg-slate-50 text-[#00477f]"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-[#00477f]"
+                    }`}
+                  >
+                    {group.label}
+                    <span className={`text-[9px] transition-transform ${isOpen ? "rotate-180" : ""}`}>▾</span>
+                  </button>
 
-              {/* THE LIST CONTAINER: Includes the 'Bridge' */}
-              {isActive && (
-                <div 
-                  className="absolute left-1/2 -translate-x-1/2 w-[850px]"
-                  style={{ top: '100%', paddingTop: '20px' }} // This padding is the "Invisible Bridge"
-                  onMouseEnter={() => setOpenGroupId(group.id)}
-                >
-                  <div className="bg-[#070c1d] border border-white/20 backdrop-blur-3xl p-8 rounded-[3rem] shadow-[0_40px_100px_rgba(0,0,0,1)] relative z-[999] animate-in fade-in zoom-in-95 duration-200">
-                    {/* Interior Glow */}
-                    <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
-                    
-                    {/* Render Content */}
-                    <div className="relative z-[1000]">
-                       <GroupPanel 
-                        group={group} 
-                        user={user as any} 
-                        onClose={() => setOpenGroupId(null)} 
-                      />
-                    </div>
-                  </div>
+                  {isOpen && (
+                    <GroupPanel
+                      group={group}
+                      user={user as any}
+                      onClose={() => setOpenGroupId(null)}
+                    />
+                  )}
                 </div>
-              )}
+              );
+            })}
+          </nav>
+
+          {/* Right side: user info + sign out + hamburger */}
+          <div className="flex items-center gap-4">
+            <div className="hidden xl:flex flex-col items-end">
+              <span className="text-xs font-medium text-slate-400">{roleLabel}</span>
+              <span className="text-sm text-slate-500">{displayEmail}</span>
             </div>
-          );
-        })}
-      </nav>
-
-      {/* 4. USER STATUS */}
-      <div className="flex items-center gap-6">
-        <div className="hidden xl:flex flex-col items-end pr-6 border-r border-white/10">
-          <span className="text-[10px] font-black text-blue-400 tracking-widest uppercase mb-0.5">{roleLabel}</span>
-          <span className="text-[11px] font-bold text-white/60 lowercase">{displayEmail}</span>
+            <button
+              type="button"
+              onClick={logout}
+              className="hidden lg:block text-sm text-red-500 hover:text-red-700 transition font-medium"
+            >
+              Sign Out
+            </button>
+            {/* Hamburger — mobile only */}
+            <button
+              type="button"
+              className="lg:hidden text-slate-600 text-2xl leading-none"
+              onClick={() => setMobileOpen(true)}
+            >
+              ☰
+            </button>
+          </div>
         </div>
-        <button
-          onClick={logout}
-          className="px-6 py-2.5 rounded-xl border border-red-500/40 text-[10px] font-black uppercase tracking-[0.2em] text-red-500 hover:bg-red-600 hover:text-white transition-all"
-        >
-          Sign Out
-        </button>
       </div>
-    </div>
-  </div>
 
-  <style dangerouslySetInnerHTML={{ __html: `
-    @keyframes scan {
-      0% { transform: translateX(-100%); }
-      100% { transform: translateX(100%); }
-    }
-  `}} />
-</header>
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setMobileOpen(false)} />
+      )}
+
+      {/* Mobile drawer */}
+      {mobileOpen && (
+        <div className="fixed top-0 left-0 h-full w-64 bg-white z-50 p-4 shadow-xl overflow-y-auto">
+          <div className="flex items-center justify-between mb-4">
+            <span className="font-bold text-[#00477f]">PlumTrips</span>
+            <button
+              type="button"
+              onClick={() => setMobileOpen(false)}
+              className="text-slate-500 text-xl leading-none"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="mb-4 border-b border-slate-100 pb-4">
+            <p className="text-xs text-slate-400">{roleLabel}</p>
+            <p className="text-sm text-slate-600 truncate">{displayEmail}</p>
+          </div>
+
+          <nav className="flex flex-col gap-4">
+            {groups.map((group) => {
+              const visibleItems = group.items.filter((it) => (it.gate ? it.gate(user as any) : true));
+              if (!visibleItems.length) return null;
+              return (
+                <div key={group.id}>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1 px-3">
+                    {group.label}
+                  </p>
+                  {visibleItems.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setMobileOpen(false)}
+                      className={({ isActive }) =>
+                        `block px-3 py-2 rounded-lg text-sm font-medium transition ${
+                          isActive
+                            ? "bg-slate-100 text-[#00477f]"
+                            : "text-slate-600 hover:bg-slate-50 hover:text-[#00477f]"
+                        }`
+                      }
+                    >
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
+              );
+            })}
+          </nav>
+
+          <button
+            type="button"
+            onClick={() => { logout(); setMobileOpen(false); }}
+            className="mt-6 w-full text-sm text-red-500 hover:text-red-700 border border-red-200 rounded-lg py-2 transition"
+          >
+            Sign Out
+          </button>
+        </div>
+      )}
+    </header>
   );
 }
