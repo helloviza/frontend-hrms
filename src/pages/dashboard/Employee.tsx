@@ -1,73 +1,107 @@
-﻿// apps/frontend/src/pages/dashboard/Employee.tsx
-import { useEffect } from "react";
-import AttendanceChart from "../../components/charts/AttendanceChart";
-import LeavePie from "../../components/charts/LeavePie";
+// apps/frontend/src/pages/dashboard/Employee.tsx
+import { useEffect, useState } from "react";
+import AttendanceChart, { AttendancePoint } from "../../components/charts/AttendanceChart";
+import LeavePie, { LeaveSlice } from "../../components/charts/LeavePie";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../lib/api";
 
-// temporary demo data
-const sampleAttendance = [
-  { date: "01", present: 1 },
-  { date: "02", present: 1 },
-  { date: "03", present: 0 },
-  { date: "04", present: 1 },
-  { date: "05", present: 1 },
-  { date: "06", present: 1 },
-];
-
-const sampleLeaves = [
-  { name: "Casual", value: 4 },
-  { name: "Sick", value: 2 },
-  { name: "Paid", value: 8 },
-];
+type LeaveItem = { type: string; status: string };
 
 export default function Employee() {
-  const { user } = useAuth(); // token no longer exists in AuthCtx
+  const { user } = useAuth();
+  const [attendanceChart, setAttendanceChart] = useState<AttendancePoint[]>([]);
+  const [attendanceStat, setAttendanceStat] = useState<{ present: number; total: number } | null>(null);
+  const [leaves, setLeaves] = useState<LeaveItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        // example API call (token automatically handled in api client)
-        await api.get("/attendance/reports?range=month");
+        const [attRes, leaveRes] = await Promise.all([
+          api.get("/attendance/reports?range=month"),
+          api.get("/leaves/my"),
+        ]);
+
+        const points: AttendancePoint[] = (attRes?.chart?.points ?? []).map(
+          (p: { label: string; value: number }) => ({ date: p.label, present: p.value })
+        );
+        const present = points.filter((p) => p.present === 100).length;
+        setAttendanceChart(points);
+        setAttendanceStat({ present, total: points.length });
+
+        setLeaves(leaveRes?.items ?? []);
       } catch {
-        // ignore demo error for now
+        // api client handles 401 refresh; other errors leave state as empty
+      } finally {
+        setLoading(false);
       }
     })();
   }, []);
+
+  const leavePie: LeaveSlice[] = Object.entries(
+    leaves.reduce<Record<string, number>>((acc, item) => {
+      const key = item.type.charAt(0) + item.type.slice(1).toLowerCase();
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {})
+  ).map(([name, value]) => ({ name, value }));
+
+  const approvedLeaves = leaves.filter((i) => i.status === "APPROVED").length;
+  const pendingLeaves = leaves.filter((i) => i.status === "PENDING").length;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-48 text-zinc-400 text-sm">
+        Loading...
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-6">
       <div className="grid md:grid-cols-3 gap-4">
         <div className="rounded-2xl border bg-white p-4">
           <div className="text-sm text-zinc-500">This Month</div>
-          <div className="text-3xl font-semibold">18 / 20</div>
+          <div className="text-3xl font-semibold">
+            {attendanceStat ? `${attendanceStat.present} / ${attendanceStat.total}` : "—"}
+          </div>
           <div className="text-xs text-emerald-600">Attendance</div>
         </div>
 
         <div className="rounded-2xl border bg-white p-4">
-          <div className="text-sm text-zinc-500">Leave Balance</div>
-          <div className="text-3xl font-semibold">12</div>
-          <div className="text-xs text-indigo-600">days remaining</div>
+          <div className="text-sm text-zinc-500">Leaves Approved</div>
+          <div className="text-3xl font-semibold">{approvedLeaves}</div>
+          <div className="text-xs text-indigo-600">this year</div>
         </div>
 
         <div className="rounded-2xl border bg-white p-4">
-          <div className="text-sm text-zinc-500">Upcoming Holiday</div>
-          <div className="text-3xl font-semibold">15 Aug</div>
-          <div className="text-xs text-rose-600">Independence Day</div>
+          <div className="text-sm text-zinc-500">Pending Requests</div>
+          <div className="text-3xl font-semibold">{pendingLeaves}</div>
+          <div className="text-xs text-rose-600">awaiting approval</div>
         </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
         <div className="rounded-2xl border bg-white p-4">
-          <div className="text-sm font-medium mb-2">
-            Attendance (last 6 days)
-          </div>
-          <AttendanceChart data={sampleAttendance} />
+          <div className="text-sm font-medium mb-2">Attendance (this month)</div>
+          {attendanceChart.length ? (
+            <AttendanceChart data={attendanceChart} />
+          ) : (
+            <div className="h-64 flex items-center justify-center text-zinc-400 text-sm">
+              No attendance data
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border bg-white p-4">
           <div className="text-sm font-medium mb-2">Leave mix</div>
-          <LeavePie data={sampleLeaves} />
+          {leavePie.length ? (
+            <LeavePie data={leavePie} />
+          ) : (
+            <div className="h-64 flex items-center justify-center text-zinc-400 text-sm">
+              No leave requests
+            </div>
+          )}
         </div>
       </div>
     </div>
