@@ -424,33 +424,35 @@ export default function BusinessProfiles() {
   /* ── ✅ NEW: Open document via presigned S3 URL ──────────────────────────── */
 
   async function openDocument(doc: any) {
-    const key = doc.key || doc.Key || doc.path || "";
+    let key = doc.objectKey || doc.key || doc.Key || doc.path || doc.s3Key || "";
 
-    // No S3 key but has a direct URL — try opening directly
-    if (!key && doc.url) {
-      window.open(doc.url, "_blank");
-      return;
+    // If key is just a filename (no slashes) and doc.url exists,
+    // extract real key from S3 URL
+    if (key && !key.includes("/") && doc.url) {
+      try {
+        const u = new URL(doc.url);
+        const extracted = decodeURIComponent(u.pathname.replace(/^\//, ""));
+        if (extracted.includes("/")) key = extracted;
+      } catch { /* keep original key */ }
     }
 
+    // If still no valid key, try opening URL directly
     if (!key) {
-      alert("Document key not available — cannot generate a secure link.");
+      if (doc.url) window.open(doc.url, "_blank");
+      else alert("Document not available.");
       return;
     }
 
     const docLabel = doc.name || key;
     setOpeningDoc(docLabel);
-
     try {
       const res = await api.get(
         `/onboarding/document/presign?key=${encodeURIComponent(key)}`
       );
-      if (res?.url) {
-        window.open(res.url, "_blank");
-      } else {
-        alert("Could not generate a secure document link. Please try again.");
-      }
+      if (res?.url) window.open(res.url, "_blank");
+      else alert("Could not generate secure link.");
     } catch (e: any) {
-      alert(e?.message || "Failed to open document. Please try again.");
+      alert(e?.message || "Failed to open document.");
     } finally {
       setOpeningDoc(null);
     }
