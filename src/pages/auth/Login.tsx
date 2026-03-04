@@ -98,25 +98,29 @@ export default function Login() {
         {/* Form */}
         <div className="w-full max-w-sm">
           {step === 1 ? (
-            <form onSubmit={handleEmailSubmit} className="space-y-3">
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="Email address"
-                autoFocus
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#00477f]/20 focus:border-[#00477f] text-sm text-slate-900 placeholder:text-slate-400 transition-all"
-              />
-              {error && <p className="text-red-500 text-xs">{error}</p>}
-              <button
-                type="submit"
-                className="w-full bg-[#00477f] hover:bg-[#003d6e] text-white py-3 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2"
-              >
-                Continue
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
+            <form onSubmit={handleEmailSubmit}>
+              <div className="relative">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="Email address"
+                  autoFocus
+                  className="w-full px-5 py-4 pr-14 rounded-2xl border border-slate-200
+                    focus:outline-none focus:ring-2 focus:ring-[#00477f]/15 focus:border-[#00477f]
+                    text-sm text-slate-900 placeholder:text-slate-400
+                    shadow-sm transition-all bg-white"
+                />
+                <button type="submit"
+                  className="absolute right-2 top-1/2 -translate-y-1/2
+                    w-9 h-9 rounded-xl bg-[#00477f] hover:bg-[#003d6e]
+                    flex items-center justify-center transition-colors shadow-sm">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
+                  </svg>
+                </button>
+              </div>
+              {error && <p className="text-red-500 text-xs mt-2 text-center">{error}</p>}
             </form>
           ) : (
             <form onSubmit={handleSignIn} className="space-y-3">
@@ -147,23 +151,38 @@ export default function Login() {
       </div>
 
       {/* Bottom trust bar */}
-      <div className="pb-8 flex flex-col items-center gap-4">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-1.5 opacity-40 hover:opacity-70 transition-opacity">
-            <div className="w-2 h-2 rounded-full bg-green-500"></div>
-            <span className="text-[11px] text-slate-500 font-medium">NVIDIA Inception</span>
+      <div className="pb-8 flex flex-col items-center gap-5">
+
+        {/* Logo row */}
+        <div className="flex items-center gap-6 opacity-30 hover:opacity-50 transition-opacity">
+          {/* NVIDIA */}
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm bg-green-600"></div>
+            <span className="text-[12px] font-bold text-slate-600 tracking-tight">NVIDIA</span>
+            <span className="text-[9px] text-slate-400 font-medium">INCEPTION</span>
           </div>
-          <div className="w-px h-4 bg-slate-200"></div>
-          <div className="flex items-center gap-1.5 opacity-40 hover:opacity-70 transition-opacity">
-            <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-            <span className="text-[11px] text-slate-500 font-medium">Google for Startups</span>
+          <div className="w-px h-5 bg-slate-200"></div>
+          {/* Google */}
+          <div className="flex items-center gap-1">
+            <span className="text-[12px] font-bold" style={{
+              background: "linear-gradient(90deg,#4285F4,#EA4335,#FBBC05,#34A853)",
+              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent"
+            }}>Google</span>
+            <span className="text-[9px] text-slate-400 font-medium">FOR STARTUPS</span>
           </div>
-          <div className="w-px h-4 bg-slate-200"></div>
-          <div className="flex items-center gap-1.5 opacity-40 hover:opacity-70 transition-opacity">
-            <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-            <span className="text-[11px] text-slate-500 font-medium">Startup India · DPIIT</span>
+          <div className="w-px h-5 bg-slate-200"></div>
+          {/* Startup India */}
+          <div className="flex items-center gap-1">
+            <div className="flex gap-0.5">
+              <div className="w-2 h-3 rounded-sm bg-orange-500"></div>
+              <div className="w-2 h-3 rounded-sm bg-white border border-slate-200"></div>
+              <div className="w-2 h-3 rounded-sm bg-green-600"></div>
+            </div>
+            <span className="text-[12px] font-bold text-slate-600 tracking-tight">Startup India</span>
+            <span className="text-[9px] text-slate-400">· DPIIT</span>
           </div>
         </div>
+
         <p className="text-[11px] text-slate-300">© 2026 Plumtrips. All rights reserved.</p>
       </div>
 
