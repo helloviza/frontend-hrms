@@ -322,6 +322,7 @@ export default function MyLeaves() {
   );
 
   const [leaves, setLeaves] = useState<LeaveItem[]>([]);
+  const [balances, setBalances] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -352,7 +353,15 @@ export default function MyLeaves() {
   }
 
   useEffect(() => {
-    void loadLeaves();
+    void (async () => {
+      await loadLeaves();
+      try {
+        const balData = (await api.get("/leaves/balance")) as any;
+        if (balData?.balances) setBalances(balData.balances);
+      } catch {
+        // balance fetch is non-critical — chip falls back to pro-rata display
+      }
+    })();
   }, []);
 
   const summary = useMemo(
@@ -563,8 +572,15 @@ export default function MyLeaves() {
                   {t.type.slice(0, 1)}
                 </span>
                 <div className="min-w-0">
-                  <div className="font-semibold text-slate-800 truncate">
-                    {t.label}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="font-semibold text-slate-800 truncate">
+                      {t.label}
+                    </div>
+                    {balances[t.type] !== undefined && (
+                      <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">
+                        {balances[t.type] < 999 ? `${balances[t.type]} left` : "Unlimited"}
+                      </span>
+                    )}
                   </div>
                   <div className="text-[10px] text-slate-500">
                     {typeof t.allowed === "number" ? (
@@ -579,9 +595,13 @@ export default function MyLeaves() {
                         </span>{" "}
                         from{" "}
                         <span className="font-medium">
-                          {t.allowed} d/year
-                        </span>{" "}
-                        quota (pro-rata).
+                          {balances[t.type] !== undefined && balances[t.type] < 999
+                            ? `${balances[t.type]} days remaining`
+                            : `${t.allowed} d/year`}
+                        </span>
+                        {(balances[t.type] === undefined || balances[t.type] >= 999) && (
+                          <>{" "}quota (pro-rata).</>
+                        )}
                       </>
                     ) : (
                       <>
