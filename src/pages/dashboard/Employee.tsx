@@ -7,6 +7,23 @@ import api from "../../lib/api";
 
 type LeaveItem = { type: string; status: string };
 
+function DashboardSkeleton() {
+  return (
+    <div className="animate-pulse space-y-4 p-6">
+      <div className="h-8 bg-slate-200 rounded-lg w-1/3" />
+      <div className="grid grid-cols-3 gap-4 mt-4">
+        {[1,2,3].map(i => (
+          <div key={i} className="h-28 bg-slate-200 rounded-xl" />
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-4 mt-4">
+        <div className="h-48 bg-slate-200 rounded-xl" />
+        <div className="h-48 bg-slate-200 rounded-xl" />
+      </div>
+    </div>
+  );
+}
+
 export default function Employee() {
   const { user } = useAuth();
   const [attendanceChart, setAttendanceChart] = useState<AttendancePoint[]>([]);
@@ -49,13 +66,7 @@ export default function Employee() {
   const approvedLeaves = leaves.filter((i) => i.status === "APPROVED").length;
   const pendingLeaves = leaves.filter((i) => i.status === "PENDING").length;
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-48 text-zinc-400 text-sm">
-        Loading...
-      </div>
-    );
-  }
+  if (loading) return <DashboardSkeleton />;
 
   return (
     <div className="grid gap-6">

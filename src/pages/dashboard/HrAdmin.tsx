@@ -9,6 +9,23 @@ type AnyObj = Record<string, any>;
 const mask = (val: string, show: number) =>
   val ? "X".repeat(Math.max(0, val.length - show)) + val.slice(-show) : "—";
 
+function DashboardSkeleton() {
+  return (
+    <div className="animate-pulse space-y-4 p-6">
+      <div className="h-8 bg-slate-200 rounded-lg w-1/3" />
+      <div className="grid grid-cols-3 gap-4 mt-4">
+        {[1,2,3].map(i => (
+          <div key={i} className="h-28 bg-slate-200 rounded-xl" />
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-4 mt-4">
+        <div className="h-48 bg-slate-200 rounded-xl" />
+        <div className="h-48 bg-slate-200 rounded-xl" />
+      </div>
+    </div>
+  );
+}
+
 export default function HrAdmin() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -364,7 +381,7 @@ export default function HrAdmin() {
       {/* Summary tiles */}
       <section>
         {summaryLoading && !summary ? (
-          <div className="text-sm text-slate-500">Loading HR overview…</div>
+          <DashboardSkeleton />
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
             {[
@@ -510,11 +527,7 @@ export default function HrAdmin() {
               </span>
             </div>
             <div className="max-h-64 overflow-auto divide-y divide-slate-100">
-              {employeesLoading && employees.length === 0 && (
-                <div className="px-4 py-3 text-sm text-slate-500">
-                  Loading employees…
-                </div>
-              )}
+              {employeesLoading && employees.length === 0 && <DashboardSkeleton />}
               {!employeesLoading && employees.length === 0 && (
                 <div className="px-4 py-3 text-sm text-slate-500">
                   No employees found.
