@@ -323,6 +323,7 @@ export default function LeaveApply() {
   const [reason, setReason] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [dayLength, setDayLength] = useState<"FULL" | "HALF">("FULL");
   const [halfSession, setHalfSession] = useState<"FIRST" | "SECOND">("FIRST");
@@ -348,7 +349,7 @@ export default function LeaveApply() {
         : [];
       setLeaves(items);
     } catch (e: any) {
-      alert(e.message || "Failed to load leaves");
+      setFormError(e.message || "Failed to load leaves");
     } finally {
       setLoading(false);
     }
@@ -407,18 +408,19 @@ export default function LeaveApply() {
 
   // ── Submit with quota checks ────────────────────────
   async function submit() {
+    setFormError(null);
     const fromDate = from;
     const toDate = to || from;
 
     if (!fromDate || !toDate || !reason.trim()) {
-      alert("Please select from / to dates and enter a reason.");
+      setFormError("Please select from / to dates and enter a reason.");
       return;
     }
 
     // compute requested days again for safety
     const reqDays = requestedDays ?? 0;
     if (reqDays <= 0) {
-      alert("Please select a valid date range for your leave.");
+      setFormError("Please select a valid date range for your leave.");
       return;
     }
 
@@ -433,7 +435,7 @@ export default function LeaveApply() {
       const humanLabel = formatType(backendTypeKey);
 
       if (remaining <= 0) {
-        alert(
+        setFormError(
           `Your ${humanLabel} leave quota for the current year has already been fully utilised. ` +
             `Please choose a different leave type (for example, Unpaid) or speak with HR for an exception.`,
         );
@@ -442,7 +444,7 @@ export default function LeaveApply() {
 
       if (reqDays > remaining) {
         const remLabel = remaining.toFixed(1).replace(/\.0$/, "");
-        alert(
+        setFormError(
           `You are requesting ${reqDays} day(s) of ${humanLabel} leave, ` +
             `but only ${remLabel} day(s) are available in your remaining quota. ` +
             `Please reduce the duration or select another leave type.`,
@@ -472,14 +474,14 @@ export default function LeaveApply() {
       }
 
       await api.post("/leaves/apply", payload);
-      alert("Leave applied successfully!");
+      setFormError(null);
       setReason("");
       setAttachment(null);
       setTo("");
       // Refresh history → also refreshes quota numbers
       await loadLeaves();
     } catch (e: any) {
-      alert(e.message || "Failed to apply leave");
+      setFormError(e.message || "Failed to apply leave");
     } finally {
       setSubmitting(false);
     }
@@ -807,6 +809,7 @@ export default function LeaveApply() {
 
               {/* CTA */}
               <div className="md:self-end">
+                {formError && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2">{formError}</p>}
                 <button
                   onClick={submit}
                   disabled={submitting}

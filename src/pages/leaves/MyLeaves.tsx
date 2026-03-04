@@ -323,6 +323,7 @@ export default function MyLeaves() {
 
   const [leaves, setLeaves] = useState<LeaveItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // History filters
   const [filterMonth, setFilterMonth] = useState<string>("ALL");
@@ -344,7 +345,7 @@ export default function MyLeaves() {
         : [];
       setLeaves(items);
     } catch (e: any) {
-      alert(e.message || "Failed to load leaves");
+      setFormError(e.message || "Failed to load leaves");
     } finally {
       setLoading(false);
     }
@@ -422,6 +423,7 @@ export default function MyLeaves() {
 
   return (
     <div className="max-w-6xl mx-auto flex flex-col gap-8">
+      {formError && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2">{formError}</p>}
       {/* Top: Copilot hero + summary + CTA to Apply page */}
       <div className="rounded-3xl border border-sky-100/70 bg-gradient-to-r from-[#eaf6ff] via-[#f5f4ff] to-[#e9f8ff] px-6 py-5 shadow-[0_18px_60px_rgba(15,23,42,0.12)]">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
