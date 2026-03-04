@@ -1,7 +1,6 @@
 // apps/frontend/src/components/layout/Header.tsx
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { ChevronDown } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import {
   hasAnyRole,
@@ -172,43 +171,52 @@ const NAV_GROUPS: NavGroup[] = [
 ];
 
 /* -------------------------------------------------------------------------- */
-/* Desktop dropdown panel                                                      */
+/* Mega menu panel (full-width)                                               */
 /* -------------------------------------------------------------------------- */
 
-function GroupPanel({
-  group,
-  onClose,
+function MegaPanel({
+  groups,
+  openGroupId,
   user,
+  onClose,
+  onPanelEnter,
 }: {
-  group: NavGroup;
-  onClose: () => void;
+  groups: NavGroup[];
+  openGroupId: string | null;
   user: any;
+  onClose: () => void;
+  onPanelEnter: () => void;
 }) {
-  const visibleItems = group.items.filter((it) => (it.gate ? it.gate(user) : true));
-  if (!visibleItems.length) return null;
+  const activeGroup = groups.find((g) => g.id === openGroupId);
+  const visibleItems = activeGroup
+    ? activeGroup.items.filter((it) => (it.gate ? it.gate(user) : true))
+    : [];
+
+  const isVisible = !!(openGroupId && visibleItems.length);
 
   return (
     <div
-      className="absolute left-1/2 top-full z-30 pt-2 w-56 -translate-x-1/2"
+      className={`fixed top-11 left-0 right-0 z-40 transition-all duration-200 ease-out ${
+        isVisible
+          ? "opacity-100 translate-y-0 pointer-events-auto"
+          : "opacity-0 -translate-y-2 pointer-events-none"
+      }`}
+      onMouseEnter={onPanelEnter}
       onMouseLeave={onClose}
     >
-      <div className="bg-white border border-slate-100 rounded-xl shadow-lg p-1.5 min-w-48">
-        {visibleItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            onClick={onClose}
-            className={({ isActive }) =>
-              `block px-3 py-2 text-sm rounded-lg transition ${
-                isActive
-                  ? "bg-slate-50 text-slate-900 font-semibold"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-              }`
-            }
-          >
-            {item.label}
-          </NavLink>
-        ))}
+      <div className="backdrop-blur-xl bg-white/90 border-b border-black/5 shadow-2xl shadow-black/10 py-6 px-16">
+        <div className="flex items-start flex-wrap gap-x-8 gap-y-1">
+          {visibleItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={onClose}
+              className="text-[13px] text-[#1d1d1f] hover:text-black/50 transition-colors duration-150 py-1 block"
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -224,6 +232,7 @@ export default function Header() {
   const navigate = useNavigate();
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const kind = detectUserKind(user as any);
   const roleLabel = useMemo(() => deriveRoleLabel(user as any), [user]);
@@ -248,65 +257,59 @@ export default function Header() {
 
   const groups = NAV_GROUPS.filter((g) => g.gate(user as any));
 
-  return (
-    <header className="sticky top-0 z-[100] bg-white border-b border-slate-100 shadow-sm">
-      <div className="mx-auto max-w-7xl px-6">
-        <div className="flex items-center justify-between h-14">
+  const scheduleClose = () => {
+    closeTimer.current = setTimeout(() => setOpenGroupId(null), 80);
+  };
 
-          {/* Logo */}
+  const cancelClose = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+
+  return (
+    <>
+      {/* Fixed header bar */}
+      <header
+        className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-white/80 border-b border-black/5 h-11 flex items-center px-8"
+        onMouseLeave={scheduleClose}
+      >
+        <div className="relative flex items-center w-full h-full">
+
+          {/* Logo — left */}
           <div
             className="flex items-center cursor-pointer"
             onClick={() => navigate("/")}
           >
-            <img src="/assets/logo.png" alt="PlumTrips" className="h-8 w-auto" />
+            <img src="/assets/logo.png" alt="PlumTrips" className="h-6 w-auto" />
           </div>
 
-          {/* Desktop nav */}
-          <nav
-            className="hidden lg:flex items-center gap-1"
-            onMouseLeave={() => setOpenGroupId(null)}
-          >
-            {groups.map((group) => {
-              const isOpen = openGroupId === group.id;
-              return (
-                <div key={group.id} className="relative">
-                  <button
-                    type="button"
-                    onMouseEnter={() => setOpenGroupId(group.id)}
-                    className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                      isOpen
-                        ? "text-slate-900"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    {group.label}
-                    <ChevronDown className={`w-3 h-3 ml-1 opacity-50 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                  </button>
-
-                  {isOpen && (
-                    <GroupPanel
-                      group={group}
-                      user={user as any}
-                      onClose={() => setOpenGroupId(null)}
-                    />
-                  )}
-                </div>
-              );
-            })}
+          {/* Desktop nav — absolute centered */}
+          <nav className="hidden lg:flex items-center gap-0 absolute left-1/2 -translate-x-1/2">
+            {groups.map((group) => (
+              <button
+                key={group.id}
+                type="button"
+                onMouseEnter={() => { cancelClose(); setOpenGroupId(group.id); }}
+                className="text-[12px] font-normal text-[#1d1d1f] hover:text-black/60 px-4 py-2 transition-colors duration-200 cursor-pointer"
+              >
+                {group.label}
+              </button>
+            ))}
           </nav>
 
-          {/* Right side: user info + sign out + hamburger */}
-          <div className="flex items-center gap-3">
+          {/* Right side */}
+          <div className="ml-auto flex items-center gap-4">
             <div className="hidden xl:flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-[#00477f] text-white text-xs font-semibold flex items-center justify-center shrink-0">
+              <div className="w-6 h-6 rounded-full bg-[#1d1d1f] text-white text-[10px] font-medium flex items-center justify-center shrink-0">
                 {(user as any)?.name?.charAt(0) || (user as any)?.email?.charAt(0) || "U"}
               </div>
-              <span className="text-xs text-slate-400">{displayEmail}</span>
             </div>
             <button
               type="button"
               onClick={logout}
-              className="hidden lg:block text-xs text-slate-400 hover:text-red-500 transition-colors"
+              className="hidden lg:block text-[12px] text-[#1d1d1f]/50 hover:text-[#1d1d1f] transition-colors"
             >
               Sign Out
             </button>
@@ -320,7 +323,16 @@ export default function Header() {
             </button>
           </div>
         </div>
-      </div>
+      </header>
+
+      {/* Mega menu panel */}
+      <MegaPanel
+        groups={groups}
+        openGroupId={openGroupId}
+        user={user as any}
+        onClose={scheduleClose}
+        onPanelEnter={cancelClose}
+      />
 
       {/* Mobile overlay */}
       {mobileOpen && (
@@ -385,6 +397,6 @@ export default function Header() {
           </button>
         </div>
       )}
-    </header>
+    </>
   );
 }

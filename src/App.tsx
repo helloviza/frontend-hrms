@@ -145,20 +145,14 @@ const showCustomerProposalsLink = useMemo(() => {
 
   return (
     <ErrorBoundary>
-    <div className="min-h-screen bg-zinc-50 font-sans selection:bg-indigo-100 selection:text-indigo-900">
-      
+    <div className={`min-h-screen bg-zinc-50 font-sans selection:bg-indigo-100 selection:text-indigo-900${!hideShell ? " pt-11" : ""}`}>
+
       {/* 1. Global Header (Hidden in Concierge) */}
-      {/* FIX: Wrapped Header in a relative z-50 container so dropdowns float above the sub-nav */}
-      {!hideShell && (
-        <div className="relative z-50">
-          <Header />
-        </div>
-      )}
+      {!hideShell && <Header />}
 
       {/* 2. Global Approvals Bar (Hidden in Concierge) */}
-      {/* Reduced z-40 to z-30 here to guarantee it stays below the Header */}
       {showApprovalsBar && (
-        <div className="w-full border-b border-zinc-200 bg-white/70 backdrop-blur-md sticky top-0 z-30">
+        <div className="w-full border-b border-zinc-200 bg-white/70 backdrop-blur-md sticky top-11 z-30">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-2">
             <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest mr-2">
               System
