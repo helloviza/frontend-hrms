@@ -65,11 +65,7 @@ export default function Login() {
             <h1 className="text-[2.5rem] font-bold text-slate-900 leading-tight tracking-tight">
               Orchestrate People.<br />
               Streamline Operations.<br />
-              <span style={{
-                background: "linear-gradient(135deg, #00477f 0%, #0066b3 40%, #00a86b 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent"
-              }}>
+              <span className="bg-gradient-to-r from-[#00477f] to-[#00a86b] bg-clip-text text-transparent">
                 Elevate Every Journey.
               </span>
             </h1>
