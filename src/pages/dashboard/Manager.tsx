@@ -27,7 +27,7 @@ export default function Manager() {
       setLoading(true);
       setError(null);
       try {
-        const data = await api.get("/reports/manager/summary");
+        const data = await api.get("/dashboard/manager");
         setSummary(data as AnyObj);
       } catch (err: any) {
         console.warn("Manager summary failed, using empty state", err);
@@ -85,19 +85,42 @@ export default function Manager() {
         ? summary!.teamMembers
         : Array.isArray(summary?.directReports)
         ? summary!.directReports
+        : Array.isArray(summary?.team)
+        ? summary!.team
         : [],
     [summary],
   );
 
-  const pendingLeaves: AnyObj[] = useMemo(
-    () =>
-      Array.isArray(summary?.pendingLeaves)
-        ? summary!.pendingLeaves
-        : Array.isArray(summary?.pendingLeaveRequests)
-        ? summary!.pendingLeaveRequests
-        : [],
-    [summary],
-  );
+  const pendingLeaves: AnyObj[] = useMemo(() => {
+    const raw: AnyObj[] = Array.isArray(summary?.pendingLeaves)
+      ? summary!.pendingLeaves
+      : Array.isArray(summary?.pendingLeaveRequests)
+      ? summary!.pendingLeaveRequests
+      : Array.isArray(summary?.openLeaves)
+      ? summary!.openLeaves
+      : [];
+    // Normalize populated userId object → flat fields expected by ApprovalList
+    return raw.map((item) => {
+      if (item.userId && typeof item.userId === "object") {
+        const from = item.from ? new Date(item.from) : null;
+        const to = item.to ? new Date(item.to) : null;
+        const fmt = (d: Date) =>
+          d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+        return {
+          ...item,
+          employeeName:
+            item.userId.fullName || item.userId.name || "Unknown",
+          dateRange:
+            from && to
+              ? `${fmt(from)} – ${fmt(to)}`
+              : from
+              ? fmt(from)
+              : "",
+        };
+      }
+      return item;
+    });
+  }, [summary]);
 
   const pendingAttendance: AnyObj[] = useMemo(
     () =>
@@ -133,15 +156,19 @@ export default function Manager() {
     [summary],
   );
 
-  const teamSize = summary?.teamSize ?? teamMembers.length ?? 0;
+  const teamSize =
+    summary?.counts?.teamSize ?? summary?.teamSize ?? teamMembers.length ?? 0;
   const pendingApprovalsTotal =
     summary?.pendingApprovals ??
     summary?.pending ??
-    pendingLeaves.length +
-      pendingAttendance.length +
-      pendingOnboarding.length;
+    summary?.counts?.openLeaveRequests ??
+    pendingLeaves.length + pendingAttendance.length + pendingOnboarding.length;
 
-  const onLeaveToday = summary?.onLeaveToday ?? summary?.onLeave ?? 0;
+  const onLeaveToday =
+    summary?.onLeaveToday ??
+    summary?.onLeave ??
+    summary?.counts?.todaysAbsents ??
+    0;
 
   const coveragePct =
     teamSize > 0
