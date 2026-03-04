@@ -34,7 +34,14 @@ export default function Login() {
     <div className="min-h-screen flex">
       {/* Left panel */}
       <div className="hidden lg:flex w-1/2 bg-[#00477f] flex-col justify-between p-12">
-        <span className="text-white text-2xl font-semibold">PlumTrips</span>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-white text-xl font-bold">PlumTrips</span>
+            <span className="text-white/30 text-lg">×</span>
+            <span className="text-white/70 text-xl font-light">Helloviza</span>
+          </div>
+          <p className="text-white/40 text-xs mt-1">Technology by Helloviza</p>
+        </div>
         <div>
           <h1 className="text-white text-4xl font-semibold leading-tight">
             Manage your team.<br />Travel smarter.
@@ -43,7 +50,26 @@ export default function Login() {
             HRMS built for modern travel companies.
           </p>
         </div>
-        <p className="text-white/30 text-xs">© 2026 PlumTrips</p>
+        <div>
+          <div className="space-y-2">
+            <p className="text-white/30 text-xs uppercase tracking-wider mb-3">Recognised & Backed By</p>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-400"></div>
+                <span className="text-white/60 text-xs font-medium">NVIDIA Inception Program</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div>
+                <span className="text-white/60 text-xs font-medium">Google for Startups</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-orange-400"></div>
+                <span className="text-white/60 text-xs font-medium">DPIIT Recognised Startup</span>
+              </div>
+            </div>
+          </div>
+          <p className="text-white/30 text-xs mt-6">© 2026 PlumTrips</p>
+        </div>
       </div>
 
       {/* Right panel */}
