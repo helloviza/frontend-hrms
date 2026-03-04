@@ -6,182 +6,30 @@ import Header from "./components/layout/Header";
 import Footer from "./components/layout/Footer";
 import { useAuth } from "./context/AuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-
-/* -------------------------------------------------------------------------- */
-/* Types                                                                      */
-/* -------------------------------------------------------------------------- */
-
-type AnyUser = {
-  roles?: string[];
-  role?: string;
-  hrmsAccessRole?: string;
-  hrmsAccessLevel?: string;
-  userType?: string;
-  accountType?: string;
-
-  vendorId?: string;
-  vendor_id?: string;
-  vendorProfileId?: string;
-  vendorProfile?: any;
-  vendor?: any;
-  isVendor?: boolean;
-  is_vendor?: boolean;
-
-  businessId?: string;
-  business_id?: string;
-  customerId?: string;
-  customer_id?: string;
-  business?: any;
-  customer?: any;
-  isCustomer?: boolean;
-  is_customer?: boolean;
-  isBusiness?: boolean;
-  is_business?: boolean;
-
-  approverId?: string;
-  approver_id?: string;
-  isApprover?: boolean;
-  is_approver?: boolean;
-  approvalRole?: string;
-
-  [key: string]: any;
-};
+import {
+  isVendor,
+  isCustomer,
+  isApprover,
+  isStaffAdmin,
+  hasAnyRole,
+  truthy,
+  AnyUser,
+} from "./lib/rbac";
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
-function norm(v: any): string {
-  return String(v ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/[\s\-_]/g, "");
-}
-
-function truthy(v: any) {
-  return v === true || v === 1 || v === "1" || v === "true";
-}
-
-function collectRoles(user: AnyUser | null | undefined): string[] {
-  if (!user) return [];
-  const out: string[] = [];
-  if (Array.isArray(user.roles)) out.push(...user.roles);
-  if (user.role) out.push(user.role);
-  if (user.hrmsAccessRole) out.push(user.hrmsAccessRole);
-  if (user.hrmsAccessLevel) out.push(user.hrmsAccessLevel);
-  if (user.userType) out.push(user.userType);
-  if (user.accountType) out.push(user.accountType);
-  if (user.approvalRole) out.push(user.approvalRole);
-  return out.map(norm).filter(Boolean);
-}
-
-function hasAnyRole(user: AnyUser | null | undefined, roles: string[]): boolean {
-  const userRoles = collectRoles(user);
-  const wanted = roles.map(norm);
-  return userRoles.some((r) => wanted.includes(r));
-}
-
-function isVendor(user: AnyUser | null | undefined): boolean {
-  if (!user) return false;
-  if (
-    user.vendorId ||
-    user.vendor_id ||
-    user.vendorProfileId ||
-    user.vendorProfile ||
-    user.vendor?.id ||
-    truthy(user.isVendor) ||
-    truthy(user.is_vendor)
-  ) {
-    return true;
-  }
-  return hasAnyRole(user, ["VENDOR"]);
-}
-
-function isCustomer(user: AnyUser | null | undefined): boolean {
-  if (!user) return false;
-  if (
-    user.businessId ||
-    user.business_id ||
-    user.customerId ||
-    user.customer_id ||
-    user.business?.id ||
-    user.customer?.id ||
-    truthy(user.isCustomer) ||
-    truthy(user.is_customer) ||
-    truthy(user.isBusiness) ||
-    truthy(user.is_business)
-  ) {
-    return true;
-  }
-  return hasAnyRole(user, [
-    "CUSTOMER",
-    "BUSINESS",
-    "CLIENT",
-    "CORPORATE",
-    "COMPANY",
-    "ORG",
-    "ORGANIZATION",
-  ]);
-}
-
-function isApprover(user: AnyUser | null | undefined): boolean {
-  if (!user) return false;
-  if (
-    user.approverId ||
-    user.approver_id ||
-    truthy(user.isApprover) ||
-    truthy(user.is_approver)
-  )
-    return true;
-
-  const roles = collectRoles(user);
-  return roles.some((r) =>
-    [
-      "APPROVER",
-      "TRAVELAPPROVER",
-      "FINANCEAPPROVER",
-      "BILLINGAPPROVER",
-      "COSTCENTERAPPROVER",
-      "MANAGERAPPROVER",
-      "REQUESTER",
-    ].includes(r)
-  );
-}
-
 function isAdmin(user: AnyUser | null | undefined): boolean {
   if (!user) return false;
-  return hasAnyRole(user, ["ADMIN", "SUPERADMIN", "SUPER_ADMIN"]);
-}
-
-function isStaffAdmin(user: AnyUser | null | undefined): boolean {
-  if (!user) return false;
-  return hasAnyRole(user, [
-    "ADMIN",
-    "SUPERADMIN",
-    "SUPER_ADMIN",
-    "HR",
-    "HR_ADMIN",
-    "OPS",
-    "OPS_ADMIN",
-  ]);
+  return hasAnyRole(user, ["Admin", "SuperAdmin"]);
 }
 
 function canSeeBookingHistory(user: AnyUser | null | undefined): boolean {
   if (!user) return false;
   if (isVendor(user)) return false;
 
-  if (
-    hasAnyRole(user, [
-      "ADMIN",
-      "SUPERADMIN",
-      "SUPER_ADMIN",
-      "HR",
-      "HR_ADMIN",
-      "L0",
-      "L1",
-      "L2",
-    ])
-  ) {
+  if (hasAnyRole(user, ["Admin", "SuperAdmin", "HR", "L0", "L1", "L2"])) {
     return true;
   }
 
@@ -253,7 +101,7 @@ const showCustomerProposalsLink = useMemo(() => {
   if (isVendor(user as AnyUser)) return false;
 
   // Ensure L0, L1, L2 are treated as "Customer" or authorized here
-  const hasProposalRole = hasAnyRole(user as AnyUser, ["L0", "L1", "L2", "CUSTOMER"]);
+  const hasProposalRole = hasAnyRole(user as AnyUser, ["L0", "L1", "L2", "Customer"]);
   
   // Allow if they have the role OR if they are a staff admin 
   // (since staff admins can access CustomerOnly routes in router.tsx)
