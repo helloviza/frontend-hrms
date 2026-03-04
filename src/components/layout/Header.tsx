@@ -642,7 +642,7 @@ export default function Header() {
           onClick={logout}
           className="px-6 py-2.5 rounded-xl border border-red-500/40 text-[10px] font-black uppercase tracking-[0.2em] text-red-500 hover:bg-red-600 hover:text-white transition-all"
         >
-          TERMINATE
+          Sign Out
         </button>
       </div>
     </div>
