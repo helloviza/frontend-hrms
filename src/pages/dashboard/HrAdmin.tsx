@@ -410,13 +410,14 @@ export default function HrAdmin() {
             </div>
             <div className="max-h-72 overflow-auto divide-y divide-slate-100">
               {onboarding.length ? (
-                onboarding.map((row: AnyObj) => {
+                onboarding.map((row: AnyObj, index: number) => {
                   const id =
                     row.id ||
                     row.employee_id ||
                     row._id ||
                     row.token ||
-                    String(Math.random());
+                    row.email ||
+                    String(index);
                   const isSelected =
                     selectedEmployee &&
                     (selectedEmployee.id ||
@@ -516,13 +517,13 @@ export default function HrAdmin() {
                   No employees found.
                 </div>
               )}
-              {employees.map((emp: AnyObj) => {
+              {employees.map((emp: AnyObj, index: number) => {
                 const id =
                   emp.id ||
                   emp.employee_id ||
                   emp._id ||
                   emp.email ||
-                  String(Math.random());
+                  String(index);
                 const isSelected =
                   selectedEmployee &&
                   (selectedEmployee.id ||
