@@ -283,6 +283,25 @@ function bCode(base: any, ownerId: string): string {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Skeleton                                                                   */
+/* -------------------------------------------------------------------------- */
+
+function ProfileSkeleton() {
+  return (
+    <div className="animate-pulse space-y-4 p-6">
+      <div className="h-8 bg-slate-200 rounded-lg w-1/3" />
+      <div className="h-4 bg-slate-200 rounded w-1/4" />
+      <div className="grid grid-cols-3 gap-4 mt-6">
+        {[1,2,3].map(i => (
+          <div key={i} className="h-24 bg-slate-200 rounded-xl" />
+        ))}
+      </div>
+      <div className="h-64 bg-slate-200 rounded-xl mt-4" />
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Main component                                                             */
 /* -------------------------------------------------------------------------- */
 
@@ -630,7 +649,7 @@ export default function BusinessProfiles() {
 
         {/* List */}
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm max-h-[75vh] overflow-y-auto">
-          {loading && <div className="p-3 text-[11px] text-slate-500">Loading…</div>}
+          {loading && <ProfileSkeleton />}
           {!loading && rows.length === 0 && (
             <div className="p-3 text-[11px] text-slate-500">No business accounts found.</div>
           )}
