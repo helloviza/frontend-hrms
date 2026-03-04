@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import api from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
+import AddStaffModal from "../../components/admin/AddStaffModal";
 
 /* =========================================================
  * Small utils
@@ -241,6 +242,9 @@ export default function UserCreation() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [busyBulk, setBusyBulk] = useState(false);
   const [bulkResult, setBulkResult] = useState<any>(null);
+
+  // Add Staff modal
+  const [showAddStaff, setShowAddStaff] = useState(false);
 
   // Admin credential console (optional)
   const [aEmail, setAEmail] = useState("");
@@ -1180,6 +1184,11 @@ export default function UserCreation() {
 
   return (
     <div className="min-h-[70vh] bg-gradient-to-b from-[#00477f]/[0.06] via-white to-[#d06549]/[0.05]">
+      <AddStaffModal
+        open={showAddStaff}
+        onClose={() => setShowAddStaff(false)}
+        onCreated={() => { setShowAddStaff(false); reload(); }}
+      />
       <div className="mx-auto max-w-7xl p-4 sm:p-6">
         {/* Header */}
         <div className={`mb-5 overflow-hidden rounded-[30px] border border-zinc-200/70 bg-white/70 backdrop-blur shadow-sm`}>
@@ -1210,6 +1219,18 @@ export default function UserCreation() {
                   <span className={`${ui.chip} border-[#00477f]/20 bg-[#00477f]/10 text-[#00477f]`}>
                     Staff Mode • Business Selector Enabled
                   </span>
+                )}
+
+                {canUseAdminConsole && (
+                  <button
+                    onClick={() => setShowAddStaff(true)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#00477f] px-4 text-[12px] font-semibold text-white hover:bg-[#003d6e] transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Staff
+                  </button>
                 )}
               </div>
             </div>
