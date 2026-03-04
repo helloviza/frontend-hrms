@@ -65,7 +65,11 @@ export default function Login() {
             <h1 className="text-[2.5rem] font-bold text-slate-900 leading-tight tracking-tight">
               Orchestrate People.<br />
               Streamline Operations.<br />
-              <span style={{ background: "linear-gradient(90deg,#00477f,#0066b3)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+              <span style={{
+                background: "linear-gradient(135deg, #00477f 0%, #0066b3 40%, #00a86b 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent"
+              }}>
                 Elevate Every Journey.
               </span>
             </h1>
@@ -109,9 +113,10 @@ export default function Login() {
                     shadow-sm transition-all bg-white"
                 />
                 <button type="submit"
-                  className="absolute right-2 top-1/2 -translate-y-1/2
-                    w-9 h-9 rounded-xl bg-[#00477f] hover:bg-[#003d6e]
-                    flex items-center justify-center transition-colors shadow-sm">
+                  className="absolute right-3 top-1/2 -translate-y-1/2
+                    w-8 h-8 rounded-full bg-[#00477f] hover:bg-[#003d6e]
+                    flex items-center justify-center transition-all shadow-sm
+                    hover:scale-105">
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
                   </svg>
@@ -148,17 +153,18 @@ export default function Login() {
       </div>
 
       {/* Bottom trust bar */}
-      <div className="pb-8 flex flex-col items-center gap-5">
-
-        {/* Logo row */}
-        <div className="flex items-center gap-6 opacity-50 hover:opacity-80 transition-opacity">
-          <img src="/assets/nvidia.png" alt="NVIDIA Inception" className="h-5 grayscale hover:grayscale-0 transition-all" />
-          <div className="w-px h-5 bg-slate-200"></div>
-          <img src="/assets/Google_for_Startups_logo.svg" alt="Google for Startups" className="h-5 grayscale hover:grayscale-0 transition-all" />
-          <div className="w-px h-5 bg-slate-200"></div>
-          <img src="/assets/DPIITLOGO.png" alt="Startup India · DPIIT" className="h-5 grayscale hover:grayscale-0 transition-all" />
+      <div className="pb-8 flex flex-col items-center gap-4">
+        <p className="text-[10px] text-slate-300 uppercase tracking-[0.2em]">Recognised &amp; Backed By</p>
+        <div className="flex items-center gap-8 opacity-40 hover:opacity-60 transition-opacity">
+          <img src="/assets/nvidia.png" alt="NVIDIA Inception"
+            className="h-6 grayscale hover:grayscale-0 transition-all duration-300" />
+          <div className="w-px h-6 bg-slate-200"></div>
+          <img src="/assets/Google_for_Startups_logo.svg" alt="Google for Startups"
+            className="h-6 grayscale hover:grayscale-0 transition-all duration-300" />
+          <div className="w-px h-6 bg-slate-200"></div>
+          <img src="/assets/DPIITLOGO.png" alt="Startup India · DPIIT"
+            className="h-6 grayscale hover:grayscale-0 transition-all duration-300" />
         </div>
-
         <p className="text-[11px] text-slate-300">© 2026 Plumtrips. All rights reserved.</p>
       </div>
 
