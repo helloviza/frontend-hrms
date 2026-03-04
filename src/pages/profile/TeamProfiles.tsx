@@ -13,6 +13,26 @@ type TabKey =
   | "learning"
   | "assets";
 
+function TeamSkeleton() {
+  return (
+    <div className="animate-pulse space-y-3 p-6">
+      <div className="h-8 bg-slate-200 rounded-lg w-1/4" />
+      <div className="h-4 bg-slate-200 rounded w-1/3 mt-2" />
+      <div className="mt-6 space-y-3">
+        {[1,2,3,4,5].map(i => (
+          <div key={i} className="flex items-center gap-4">
+            <div className="h-10 w-10 bg-slate-200 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 bg-slate-200 rounded w-1/3" />
+              <div className="h-3 bg-slate-200 rounded w-1/4" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function TeamProfiles() {
   const { user } = useAuth();
   const [rows, setRows] = useState<Employee[]>([]);
@@ -284,11 +304,7 @@ setForm({
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm max-h-[70vh] overflow-y-auto">
-          {loading && (
-            <div className="p-3 text-[11px] text-slate-500">
-              Loading team profiles…
-            </div>
-          )}
+          {loading && <TeamSkeleton />}
           {!loading && rows.length === 0 && (
             <div className="p-3 text-[11px] text-slate-500">
               No team members found.
