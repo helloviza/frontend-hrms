@@ -33,49 +33,53 @@ export default function Login() {
   return (
     <div className="min-h-screen flex">
       {/* Left panel */}
-      <div className="hidden lg:flex w-1/2 bg-[#00477f] flex-col justify-between p-12">
+      <div className="hidden lg:flex w-1/2 bg-gradient-to-br from-[#00477f] via-[#005a9e] to-[#003560] flex-col justify-between p-12">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-white text-xl font-bold">PlumTrips</span>
-            <span className="text-white/30 text-lg">×</span>
-            <span className="text-white/70 text-xl font-light">Helloviza</span>
+          <div className="flex items-center gap-2.5">
+            <span className="text-white/50 text-lg font-light tracking-wide">Helloviza</span>
+            <span className="text-white/25 text-base">X</span>
+            <span className="text-white text-lg font-semibold tracking-wide">Plumtrips</span>
           </div>
-          <p className="text-white/40 text-xs mt-1">Technology by Helloviza</p>
+          <p className="text-white/35 text-[11px] mt-1 tracking-widest uppercase">Technology by Pluto.ai</p>
         </div>
         <div>
           <h1 className="text-white text-4xl font-semibold leading-tight">
-            Manage your team.<br />Travel smarter.
+            Orchestrate People.<br />Streamline Operations.<br />Elevate Every Journey.
           </h1>
           <p className="text-white/60 text-sm mt-4">
-            HRMS built for modern travel companies.
+            A sophisticated platform designed for travel companies to manage teams, workflows, and travel experiences with clarity and precision.
           </p>
         </div>
         <div>
-          <div className="space-y-2">
-            <p className="text-white/30 text-xs uppercase tracking-wider mb-3">Recognised & Backed By</p>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-400"></div>
-                <span className="text-white/60 text-xs font-medium">NVIDIA Inception Program</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div>
-                <span className="text-white/60 text-xs font-medium">Google for Startups</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-orange-400"></div>
-                <span className="text-white/60 text-xs font-medium">DPIIT Recognised Startup</span>
-              </div>
+          <p className="text-white/25 text-[10px] uppercase tracking-[0.2em] mb-3">Recognised & Backed By</p>
+          <div className="flex flex-wrap gap-2">
+            <div className="flex items-center gap-1.5 bg-white/8 border border-white/10 rounded-full px-3 py-1.5 backdrop-blur-sm">
+              <svg className="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+              </svg>
+              <span className="text-white/70 text-[11px] font-medium">NVIDIA Inception</span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-white/8 border border-white/10 rounded-full px-3 py-1.5 backdrop-blur-sm">
+              <svg className="w-3 h-3 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
+              </svg>
+              <span className="text-white/70 text-[11px] font-medium">Google for Startups</span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-white/8 border border-white/10 rounded-full px-3 py-1.5 backdrop-blur-sm">
+              <svg className="w-3 h-3 text-orange-400" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+              </svg>
+              <span className="text-white/70 text-[11px] font-medium">DPIIT Recognised</span>
             </div>
           </div>
-          <p className="text-white/30 text-xs mt-6">© 2026 PlumTrips</p>
+          <p className="text-white/30 text-xs mt-6">© 2026 Plumtrips</p>
         </div>
       </div>
 
       {/* Right panel */}
       <div className="w-full lg:w-1/2 flex items-center justify-center bg-white p-8">
         <div className="w-full max-w-sm">
-          <span className="text-[#00477f] text-xl font-bold">PlumTrips</span>
+          <span className="text-[#00477f] text-xl font-bold">Plumtrips</span>
           <h2 className="text-2xl font-semibold text-slate-900 mt-8 mb-6">Sign in</h2>
 
           <div className="space-y-4">
