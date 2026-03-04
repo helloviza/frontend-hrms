@@ -16,7 +16,7 @@ export default function Protected({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen text-gray-500">
+      <div className="flex h-screen items-center justify-center text-zinc-500">
         Checking access…
       </div>
     );
@@ -24,14 +24,14 @@ export default function Protected({
 
   if (!user) return <Navigate to="/login" replace />;
 
-  // ✅ Now supports SUPER_ADMIN / HR_ADMIN etc coming from backend,
-  // because hasAnyRole() reads user.roles + user.role + hrmsAccessRole + userType...
-  const ok = hasAnyRole(user, roles);
+  // ✅ If roles are NOT specified, allow any authenticated user
+  const requiresRoles = Array.isArray(roles) && roles.length > 0;
+  const ok = requiresRoles ? hasAnyRole(user, roles) : true;
 
   if (!ok) {
     return (
-      <div className="mx-auto max-w-2xl rounded-2xl border bg-white p-6 text-center">
-        <h2 className="text-xl font-semibold text-ink mb-2">No access</h2>
+      <div className="mx-auto max-w-2xl rounded-2xl border border-zinc-200 bg-white p-6 text-center shadow-sm">
+        <h2 className="mb-2 text-xl font-semibold text-zinc-900">No access</h2>
         <p className="text-sm text-zinc-600">
           Your account doesn’t have permission to view this page.
         </p>

@@ -1,0 +1,63 @@
+.copilot-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #00477f;
+  color: white;
+  border-radius: 50%;
+  width: 56px;
+  height: 56px;
+  font-size: 20px;
+  border: none;
+}
+
+.copilot-box {
+  position: fixed;
+  bottom: 90px;
+  right: 24px;
+  width: 360px;
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.2);
+  display: flex;
+  flex-direction: column;
+}
+
+.copilot-header {
+  padding: 12px;
+  font-weight: 600;
+  background: #00477f;
+  color: white;
+}
+
+.copilot-messages {
+  padding: 12px;
+  height: 260px;
+  overflow-y: auto;
+}
+
+.msg {
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.msg.user { text-align: right; }
+.msg.ai { text-align: left; color: #333; }
+
+.copilot-input {
+  display: flex;
+  border-top: 1px solid #eee;
+}
+
+.copilot-input input {
+  flex: 1;
+  padding: 10px;
+  border: none;
+}
+
+.copilot-input button {
+  background: #d06549;
+  color: white;
+  border: none;
+  padding: 0 16px;
+}

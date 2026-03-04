@@ -1,0 +1,55 @@
+.copilot-page {
+  padding: 32px;
+  min-height: calc(100vh - 80px);
+  background: radial-gradient(circle at top, #0b1d2d, #020814);
+}
+
+.copilot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.copilot-eyebrow {
+  letter-spacing: 0.2em;
+  color: #7fb7ff;
+  font-size: 12px;
+}
+
+.copilot-header h1 {
+  color: white;
+  margin-top: 6px;
+}
+
+.copilot-live {
+  display: flex;
+  align-items: center;
+  color: #3ddc97;
+}
+
+.copilot-live .dot {
+  width: 8px;
+  height: 8px;
+  background: #3ddc97;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.copilot-actions {
+  margin: 24px 0;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.copilot-actions button {
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: white;
+}
+
+.copilot-main {
+  margin-top: 24px;
+}

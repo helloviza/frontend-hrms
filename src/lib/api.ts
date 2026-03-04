@@ -1,11 +1,10 @@
+// apps/frontend/src/lib/api.ts
+
 /**
- * Unified API client with in-memory access token, localStorage fallback,
- * and single-flight refresh to avoid loops.
- *
- * Key fix for your case:
- * - Always attaches Authorization Bearer from (memory OR localStorage) so
- *   approvals admin endpoints don't fail with NO_TOKEN.
- * - Exports setAccessToken/onAccessTokenRefresh exactly once (no redeclare).
+ * Unified API client with:
+ * - in-memory access token + localStorage fallback
+ * - cookie-based refresh (single-flight to avoid loops)
+ * - always attaches Authorization Bearer when token exists
  */
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -16,23 +15,36 @@ function isLocalhostHost(host: string) {
 
 /**
  * Normalize base into an API base that includes `/api` exactly once.
+ * Examples:
+ * - "/api" -> "/api"
+ * - "/" -> "/api"
+ * - "https://x.com" -> "https://x.com/api"
+ * - "https://x.com/api" -> "https://x.com/api"
  */
 function normalizeApiBase(input: string) {
   let s = String(input || "").trim();
   if (!s) s = "/api";
+
+  // strip trailing slashes
   s = s.replace(/\/+$/, "");
 
+  // relative base
   if (s.startsWith("/")) {
-    if (!/^\/api(\/|$)/.test(s)) s = `${s}/api`.replace(/\/+$/, "");
-    return s;
+    // "/api" or "/api/..." should stay
+    if (!/^\/api(\/|$)/.test(s)) {
+      // if it's "/" or "/something" ensure ends with "/api"
+      s = s === "/" ? "/api" : `${s}/api`;
+    }
+    return s.replace(/\/+$/, "");
   }
 
+  // absolute base
   if (!/\/api(\/|$)/.test(s)) s = `${s}/api`;
   return s.replace(/\/+$/, "");
 }
 
 function joinUrl(base: string, path: string) {
-  const b = base.replace(/\/+$/, "");
+  const b = String(base || "").replace(/\/+$/, "");
   const p = String(path || "");
   if (!p) return b;
   if (p.startsWith("/")) return `${b}${p}`;
@@ -44,7 +56,7 @@ function getDefaultApiBase() {
     // Dev uses Vite proxy
     return "/api";
   }
-  // Prod: normalizeApiBase will add /api if missing
+  // Prod
   return "https://api.hrms.plumtrips.com";
 }
 
@@ -104,17 +116,23 @@ export const onAccessTokenRefresh = (cb: (token: string | null) => void) => {
   onTokenRefresh = cb;
 };
 
+export const clearAccessToken = () => {
+  accessToken = null;
+  writeStoredToken(null);
+  if (onTokenRefresh) onTokenRefresh(null);
+};
+
 function getAuthToken(): string | null {
   // always re-check storage as fallback (covers first page load)
   return accessToken || readStoredToken();
 }
 
 async function safeReadBody(res: Response) {
-  const ct = res.headers.get("content-type") || "";
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
   try {
     if (ct.includes("application/json")) return await res.json();
     const t = await res.text();
-    return t ? { message: t } : null;
+    return t ? t : null;
   } catch {
     return null;
   }
@@ -122,21 +140,26 @@ async function safeReadBody(res: Response) {
 
 async function readErrorText(res: Response) {
   const body = await safeReadBody(res);
+
   if (body && typeof body === "object") {
     const anyBody: any = body;
     return anyBody?.error || anyBody?.message || JSON.stringify(anyBody);
   }
-  if (typeof body === "string") return body;
+
+  if (typeof body === "string" && body.trim()) return body;
   return `Request failed: ${res.status}`;
 }
 
 async function ensureRefreshed(): Promise<boolean> {
   if (isRefreshing && refreshPromise) return refreshPromise;
+
   isRefreshing = true;
   refreshPromise = refreshAccessToken();
+
   const ok = await refreshPromise;
   isRefreshing = false;
   refreshPromise = null;
+
   return ok;
 }
 
@@ -153,12 +176,15 @@ async function refreshAccessToken(): Promise<boolean> {
     if (!res.ok) return false;
 
     const data: any = await safeReadBody(res);
-    if (data?.accessToken) {
-      accessToken = data.accessToken;
-      writeStoredToken(data.accessToken);
-      if (onTokenRefresh) onTokenRefresh(data.accessToken);
+    const token = data?.accessToken || data?.token || null;
+
+    if (token) {
+      accessToken = token;
+      writeStoredToken(token);
+      if (onTokenRefresh) onTokenRefresh(token);
       return true;
     }
+
     return false;
   } catch (err) {
     console.warn("Token refresh failed", err);
@@ -174,7 +200,8 @@ async function request<T = any>(
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
 
-  if (method !== "GET" && method !== "DELETE") headers["Content-Type"] = "application/json";
+  const isBodyMethod = method !== "GET" && method !== "DELETE";
+  if (isBodyMethod) headers["Content-Type"] = "application/json";
 
   const token = getAuthToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -185,34 +212,39 @@ async function request<T = any>(
     method,
     headers,
     credentials: "include",
-    ...(body && method !== "GET" && method !== "DELETE"
-      ? { body: JSON.stringify(body) }
-      : {}),
+    ...(isBodyMethod && body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
 
   if (res.status === 401 && !retried) {
     const refreshed = await ensureRefreshed();
     const token2 = getAuthToken();
+
     if (refreshed && token2) {
       return request<T>(method, path, body, true);
     }
 
-    // hard fail: clear
-    accessToken = null;
-    writeStoredToken(null);
-    if (onTokenRefresh) onTokenRefresh(null);
+    clearAccessToken();
     throw new Error("Session expired. Please log in again.");
   }
 
   if (!res.ok) throw new Error(await readErrorText(res));
 
   const data = await safeReadBody(res);
+
+  // no-content
   if (data == null) return {} as T;
+
+  // plain text
   if (typeof data === "string") return ({ message: data } as unknown) as T;
+
   return data as T;
 }
 
-async function requestForm<T = any>(path: string, formData: FormData, retried = false): Promise<T> {
+async function requestForm<T = any>(
+  path: string,
+  formData: FormData,
+  retried = false
+): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
 
   const token = getAuthToken();
@@ -230,11 +262,10 @@ async function requestForm<T = any>(path: string, formData: FormData, retried = 
   if (res.status === 401 && !retried) {
     const refreshed = await ensureRefreshed();
     const token2 = getAuthToken();
+
     if (refreshed && token2) return requestForm<T>(path, formData, true);
 
-    accessToken = null;
-    writeStoredToken(null);
-    if (onTokenRefresh) onTokenRefresh(null);
+    clearAccessToken();
     throw new Error("Session expired. Please log in again.");
   }
 

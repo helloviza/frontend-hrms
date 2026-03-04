@@ -9,6 +9,8 @@ import {
 } from "../../../lib/approvalsApi";
 import { getWorkspaceMe } from "../../../lib/workspaceApi";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import AirportAutocomplete from "../../../components/inputs/AirportAutocomplete";
+import SearchPreviewDrawer from "../../../components/searchPreview/SearchPreviewDrawer";
 
 type ServiceKey =
   | "flight"
@@ -19,6 +21,17 @@ type ServiceKey =
   | "esim"
   | "holiday"
   | "mice";
+
+type TravelScope = "domestic" | "international";
+
+type Traveller = {
+  firstName: string;
+  lastName: string;
+  dob?: string; // yyyy-mm-dd
+  passportNumber?: string;
+  passportExpiry?: string; // yyyy-mm-dd
+  nationality?: string;
+};
 
 const SERVICE_TYPES: Array<{
   key: ServiceKey;
@@ -32,18 +45,48 @@ const SERVICE_TYPES: Array<{
     emoji: "✈️",
     hint: "Book flights for official travel",
   },
-  { key: "hotel", label: "Hotels", emoji: "🏨", hint: "Stay details for the trip" },
+  {
+    key: "hotel",
+    label: "Hotels",
+    emoji: "🏨",
+    hint: "Stay details for the trip",
+  },
   {
     key: "visa",
     label: "Visa",
     emoji: "🛂",
     hint: "eVisa / Sticker / Stamp visa requirements",
   },
-  { key: "cab", label: "Cab", emoji: "🚕", hint: "Airport / local transfer" },
-  { key: "forex", label: "Forex", emoji: "💱", hint: "Cash / card / travel money" },
-  { key: "esim", label: "eSIM", emoji: "📶", hint: "International data packs" },
-  { key: "holiday", label: "Holidays", emoji: "🌴", hint: "Leisure / incentive travel plan" },
-  { key: "mice", label: "MICE", emoji: "🎤", hint: "Meetings / offsites / conferences" },
+  {
+    key: "cab",
+    label: "Cab",
+    emoji: "🚕",
+    hint: "Airport / local transfer",
+  },
+  {
+    key: "forex",
+    label: "Forex",
+    emoji: "💱",
+    hint: "Cash / card / travel money",
+  },
+  {
+    key: "esim",
+    label: "eSIM",
+    emoji: "📶",
+    hint: "International data packs",
+  },
+  {
+    key: "holiday",
+    label: "Holidays",
+    emoji: "🌴",
+    hint: "Leisure / incentive travel plan",
+  },
+  {
+    key: "mice",
+    label: "MICE",
+    emoji: "🎤",
+    hint: "Meetings / offsites / conferences",
+  },
 ];
 
 const PRIORITIES = ["Normal", "High", "Urgent"] as const;
@@ -84,6 +127,50 @@ function ensureStr(v: any) {
   return String(v ?? "").trim();
 }
 
+function emptyTraveller(): Traveller {
+  return {
+    firstName: "",
+    lastName: "",
+    dob: "",
+    passportNumber: "",
+    passportExpiry: "",
+    nationality: "",
+  };
+}
+
+function ensureTravellersCount(list: any, n: number): Traveller[] {
+  const arr: Traveller[] = Array.isArray(list) ? list : [];
+  const count = Math.max(1, safeInt(n, 1));
+  const out = arr.slice(0, count).map((t) => ({
+    ...emptyTraveller(),
+    ...(t || {}),
+    firstName: ensureStr((t || {}).firstName),
+    lastName: ensureStr((t || {}).lastName),
+  }));
+  while (out.length < count) out.push(emptyTraveller());
+  return out;
+}
+
+function validateTravellers(scope: TravelScope, travellers: Traveller[]) {
+  for (let i = 0; i < travellers.length; i++) {
+    const t = travellers[i] || ({} as Traveller);
+    if (!ensureStr(t.firstName) || !ensureStr(t.lastName)) {
+      return `Traveller ${i + 1}: First Name and Last Name are required.`;
+    }
+    if (scope === "international") {
+      if (!ensureStr(t.dob))
+        return `Traveller ${i + 1}: Date of Birth is required for international travel.`;
+      if (!ensureStr(t.passportNumber))
+        return `Traveller ${i + 1}: Passport Number is required for international travel.`;
+      if (!ensureStr(t.passportExpiry))
+        return `Traveller ${i + 1}: Passport Expiry Date is required for international travel.`;
+      if (!ensureStr(t.nationality))
+        return `Traveller ${i + 1}: Nationality is required for international travel.`;
+    }
+  }
+  return "";
+}
+
 /** Compact field wrapper */
 function Field({
   label,
@@ -98,7 +185,9 @@ function Field({
     <div>
       <div className="flex items-baseline justify-between gap-2">
         <label className="text-xs font-medium text-slate-700">{label}</label>
-        {hint ? <span className="text-[11px] text-slate-400">{hint}</span> : null}
+        {hint ? (
+          <span className="text-[11px] text-slate-400">{hint}</span>
+        ) : null}
       </div>
       <div className="mt-1">{children}</div>
     </div>
@@ -181,6 +270,45 @@ function SectionTitle({ title, sub }: { title: string; sub?: string }) {
   );
 }
 
+function Pill({
+  active,
+  title,
+  desc,
+  onClick,
+}: {
+  active?: boolean;
+  title: string;
+  desc: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        "w-full text-left rounded-2xl border p-4 transition shadow-sm",
+        active
+          ? "border-[#00477f]/30 bg-[#00477f]/5"
+          : "border-slate-200 bg-white hover:bg-slate-50"
+      )}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-semibold text-slate-900">{title}</div>
+        {active ? (
+          <span className="text-[10px] uppercase tracking-widest px-2 py-1 rounded-full bg-[#00477f] text-white">
+            Selected
+          </span>
+        ) : (
+          <span className="text-[10px] uppercase tracking-widest px-2 py-1 rounded-full bg-slate-100 text-slate-600">
+            Select
+          </span>
+        )}
+      </div>
+      <div className="mt-1 text-xs text-slate-600">{desc}</div>
+    </button>
+  );
+}
+
 // --- Workspace shape (supports your API returning scopeType/scopeId) ---
 type WorkspaceMeResponse = {
   ok?: boolean;
@@ -208,7 +336,6 @@ function pickCustomerIdFromWorkspacePayload(payload: any): {
   const scopeType = String(ws?.scopeType ?? data?.scopeType ?? "").toUpperCase();
   const scopeId = String(ws?.scopeId ?? data?.scopeId ?? "").trim();
 
-  // Backward-compat picks (older shapes)
   const legacyCustomerId =
     data?.customerId ||
     ws?.customerId ||
@@ -311,12 +438,26 @@ export default function ApprovalNew() {
   const [type, setType] = useState<ServiceKey>("flight");
 
   // Common request-level fields
-  const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>("Normal");
+  const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>(
+    "Normal"
+  );
   const [needBy, setNeedBy] = useState(addDaysISO(2));
   const [comments, setComments] = useState("");
 
-  // Estimated pricing (optional; used to compute totals)
-  const [estimatedBudget, setEstimatedBudget] = useState<number>(0);
+  // ✅ Request-level: Domestic / International + Travellers
+  const [travelScope, setTravelScope] = useState<TravelScope>("domestic");
+  const [travellerCount, setTravellerCount] = useState<number>(1);
+  const [travellers, setTravellers] = useState<Traveller[]>([
+    emptyTraveller(),
+  ]);
+
+  // Keep travellers list synced with travellerCount
+  useEffect(() => {
+    setTravellers((p) => ensureTravellersCount(p, travellerCount));
+  }, [travellerCount]);
+
+  // ✅ Budget is frozen/removed — keep as 0 always (for backward compatibility)
+  const estimatedBudget = 0;
 
   // Per-service dynamic form state (stored into meta)
   const [meta, setMeta] = useState<Record<string, any>>({
@@ -338,6 +479,7 @@ export default function ApprovalNew() {
       notes: "",
     },
     hotel: {
+      // ✅ Manual only (no Google API / no modal)
       city: "",
       checkIn: addDaysISO(5),
       checkOut: addDaysISO(8),
@@ -421,6 +563,11 @@ export default function ApprovalNew() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // 🔍 Preview drawer state (read-only advisor)
+const [previewOpen, setPreviewOpen] = useState(false);
+const [previewMode, setPreviewMode] = useState<"flight" | "hotel">("flight");
+
+
   const total = useMemo(
     () =>
       cart.reduce(
@@ -449,20 +596,58 @@ export default function ApprovalNew() {
     (async () => {
       try {
         setEditLoading(true);
+
         const res = await getApprovalRequest(editId);
         if (!alive) return;
 
-        const req = res.request;
+        const req = res?.request as ApprovalRequest;
         setEditingRequest(req);
-        setCart(req.cartItems || []);
-        setComments(req.comments || "");
 
-        // If we know the first item type, pre-select that tab
-        if (req.cartItems && req.cartItems.length > 0) {
-          const firstType = req.cartItems[0].type as ServiceKey;
+        const reqCart = Array.isArray((req as any).cartItems)
+          ? (((req as any).cartItems as any[]) || [])
+          : [];
+        setCart(reqCart as any);
+        setComments((req as any).comments || "");
+
+        // Restore travellers/scope + preselect service + hydrate meta for edit-mode UI
+        if (reqCart.length > 0) {
+          const firstItem: any = reqCart[0] || {};
+          const firstType = (firstItem.type as ServiceKey) || "flight";
+          const firstMeta = firstItem.meta || {};
+
+          const sc = (firstMeta.travelScope as TravelScope) || "domestic";
+          const trs = Array.isArray(firstMeta.travellers)
+            ? firstMeta.travellers
+            : null;
+
+          if (trs && trs.length) {
+            setTravelScope(sc);
+            setTravellerCount(trs.length);
+            setTravellers(ensureTravellersCount(trs, trs.length));
+          } else {
+            if (sc) setTravelScope(sc);
+          }
+
           if (SERVICE_TYPES.some((s) => s.key === firstType)) {
             setType(firstType);
           }
+
+          setMeta((p) => {
+            const merged: any = { ...(p[firstType] || {}), ...(firstMeta || {}) };
+
+            // ✅ If older hotel meta used google object, normalize to manual city label
+            if (firstType === "hotel") {
+              const cityFromOld =
+                ensureStr(merged.city) ||
+                ensureStr(merged?.hotel?.name) ||
+                ensureStr(merged?.hotel?.address) ||
+                "";
+              merged.city = cityFromOld;
+              delete merged.hotel;
+            }
+
+            return { ...p, [firstType]: merged };
+          });
         }
       } catch (e: any) {
         if (!alive) return;
@@ -481,8 +666,17 @@ export default function ApprovalNew() {
   function addItemToCart() {
     setErr(null);
 
+    // ✅ validate travellers first (applies to ALL services)
+    const syncTravellers = ensureTravellersCount(travellers, travellerCount);
+    const tErr = validateTravellers(travelScope, syncTravellers);
+    if (tErr) {
+      setErr(tErr);
+      return;
+    }
+
     const must = (cond: any, message: string) => {
-      const ok = typeof cond === "string" ? cond.trim().length > 0 : Boolean(cond);
+      const ok =
+        typeof cond === "string" ? cond.trim().length > 0 : Boolean(cond);
       if (!ok) {
         setErr(message);
         return false;
@@ -492,30 +686,49 @@ export default function ApprovalNew() {
 
     if (type === "flight") {
       if (!must(ensureStr(m.origin), "Flight: please enter Origin.")) return;
-      if (!must(ensureStr(m.destination), "Flight: please enter Destination.")) return;
-      if (!must(ensureStr(m.departDate), "Flight: please select Departure date.")) return;
+      if (!must(ensureStr(m.destination), "Flight: please enter Destination."))
+        return;
       if (
-        m.tripType === "roundtrip" &&
+        !must(ensureStr(m.departDate), "Flight: please select Departure date.")
+      )
+        return;
+      if (
+        String(m.tripType || "").toLowerCase() === "roundtrip" &&
         !must(ensureStr(m.returnDate), "Flight: please select Return date.")
       )
         return;
     }
 
     if (type === "hotel") {
-      if (!must(ensureStr(m.city), "Hotel: please enter Destination city.")) return;
-      if (!must(ensureStr(m.checkIn), "Hotel: please select Check-in date.")) return;
-      if (!must(ensureStr(m.checkOut), "Hotel: please select Check-out date.")) return;
+      if (
+        !must(
+          ensureStr(m.city),
+          "Hotel: please enter City / Area / Hotel name."
+        )
+      )
+        return;
+      if (!must(ensureStr(m.checkIn), "Hotel: please select Check-in date."))
+        return;
+      if (!must(ensureStr(m.checkOut), "Hotel: please select Check-out date."))
+        return;
     }
 
     if (type === "visa") {
-      if (!must(ensureStr(m.destinationCountry), "Visa: please enter Destination country."))
+      if (
+        !must(
+          ensureStr(m.destinationCountry),
+          "Visa: please enter Destination country."
+        )
+      )
         return;
-      if (!must(ensureStr(m.travelDate), "Visa: please select Journey date.")) return;
+      if (!must(ensureStr(m.travelDate), "Visa: please select Journey date."))
+        return;
     }
 
     if (type === "cab") {
       if (!must(ensureStr(m.city), "Cab: please enter City.")) return;
-      if (!must(ensureStr(m.pickup), "Cab: please enter Pickup location.")) return;
+      if (!must(ensureStr(m.pickup), "Cab: please enter Pickup location."))
+        return;
       if (!must(ensureStr(m.drop), "Cab: please enter Drop location.")) return;
     }
 
@@ -528,12 +741,16 @@ export default function ApprovalNew() {
     }
 
     if (type === "holiday") {
-      if (!must(ensureStr(m.destination), "Holidays: please enter Destination.")) return;
+      if (
+        !must(ensureStr(m.destination), "Holidays: please enter Destination.")
+      )
+        return;
     }
 
     if (type === "mice") {
       if (!must(ensureStr(m.location), "MICE: please enter Location.")) return;
-      if (!must(Number(m.attendees) > 0, "MICE: please enter Attendees count.")) return;
+      if (!must(Number(m.attendees) > 0, "MICE: please enter Attendees count."))
+        return;
     }
 
     const title = (() => {
@@ -546,8 +763,10 @@ export default function ApprovalNew() {
             : "One Way";
         return `${ensureStr(m.origin)} → ${ensureStr(m.destination)} (${tt})`;
       }
-      if (type === "hotel")
-        return `${ensureStr(m.city)} • ${ensureStr(m.hotelType || "Hotel")} stay`;
+      if (type === "hotel") {
+        const q = ensureStr(m.city);
+        return `${q || "Hotel"} • ${ensureStr(m.hotelType || "Hotel")} stay`;
+      }
       if (type === "visa")
         return `${ensureStr(m.destinationCountry)} • ${ensureStr(
           m.visaType || "Visa"
@@ -570,9 +789,7 @@ export default function ApprovalNew() {
     const qty = (() => {
       if (type === "flight")
         return (
-          safeInt(m.adults, 1) +
-          safeInt(m.children, 0) +
-          safeInt(m.infants, 0)
+          safeInt(m.adults, 1) + safeInt(m.children, 0) + safeInt(m.infants, 0)
         );
       if (type === "hotel") return safeInt(m.rooms, 1);
       if (type === "visa") return safeInt(m.travelers, 1);
@@ -589,17 +806,31 @@ export default function ApprovalNew() {
       title,
       description: ensureStr(m.notes || ""),
       qty,
-      price: Math.max(0, Number(estimatedBudget) || 0),
+      // ✅ Budget frozen: keep 0
+      price: 0,
       meta: {
         ...m,
+
+        // ✅ Budget frozen: ensure no stale field persists
+        estimatedBudget: undefined,
+
         priority,
         needBy,
+
+        // ✅ global travellers injected into every service item
+        travelScope,
+        travellers: syncTravellers,
       },
     };
 
+    // ✅ ensure "hotel" object isn't accidentally persisted
+    if (type === "hotel") {
+      (item.meta as any).hotel = undefined;
+    }
+
     setCart((p) => [item, ...p]);
-    setEstimatedBudget(0);
     setMetaField("notes", "");
+    setTravellers(syncTravellers);
   }
 
   function remove(idx: number) {
@@ -620,7 +851,6 @@ export default function ApprovalNew() {
         setErr("Loading workspace… please try again in a moment.");
         return;
       }
-
       if (!customerId) {
         setErr(
           "Customer workspace not found for this login. Ask Admin to create/link Business workspace (MasterData) or set DEFAULT_CUSTOMER_BUSINESS_ID on backend."
@@ -629,23 +859,47 @@ export default function ApprovalNew() {
       }
     }
 
+    const syncTravellers = ensureTravellersCount(travellers, travellerCount);
+    const tErr = validateTravellers(travelScope, syncTravellers);
+    if (tErr) {
+      setErr(tErr);
+      return;
+    }
+
+    const patchedCart = cart.map((c: any) => {
+      const next = {
+        ...c,
+        price: 0, // ✅ freeze again at submit time
+        meta: {
+          ...(c.meta || {}),
+          travelScope,
+          travellers: syncTravellers,
+        },
+      };
+
+      // ✅ strip legacy hotel object if present
+      if (next.type === "hotel") {
+        next.meta = { ...(next.meta || {}) };
+        delete (next.meta as any).hotel;
+      }
+
+      // ✅ strip any accidental budget
+      delete (next.meta as any).estimatedBudget;
+
+      return next;
+    });
+
     setSaving(true);
     try {
       if (editing && editId) {
-        // 🔁 Update existing request — approver sees same request id
-        await updateApprovalRequest(editId, {
-          cartItems: cart,
-          comments,
-        });
+        await updateApprovalRequest(editId, { cartItems: patchedCart, comments });
       } else {
-        // 🆕 Create a fresh request
         await submitApprovalRequest({
           customerId,
-          cartItems: cart,
+          cartItems: patchedCart,
           comments,
         });
       }
-
       nav("/customer/approvals/mine");
     } catch (e: any) {
       setErr(e?.message || "Submit failed");
@@ -653,6 +907,17 @@ export default function ApprovalNew() {
       setSaving(false);
     }
   }
+
+  const scopeLabel = travelScope === "international" ? "International" : "Domestic";
+
+  const travellersPreview = useMemo(() => {
+    const list = ensureTravellersCount(travellers, travellerCount);
+    return list
+      .map((t) =>
+        `${ensureStr(t.firstName) || "—"} ${ensureStr(t.lastName) || ""}`.trim()
+      )
+      .join(" • ");
+  }, [travellers, travellerCount]);
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
@@ -668,11 +933,10 @@ export default function ApprovalNew() {
             </div>
             <div className="mt-1 text-sm text-slate-600 max-w-2xl">
               {editing
-                ? "Adjust your itinerary, budgets or notes. Changes stay in sync with the Approver Inbox and Admin queue."
+                ? "Adjust your itinerary and notes. Changes stay in sync with the Approver Inbox and Admin queue."
                 : "Add structured travel details (flight, hotel, visa, etc.), get approvals fast, and keep every request audit-ready."}
             </div>
 
-            {/* Workspace + edit hint */}
             <div className="mt-2 text-[11px] text-slate-500">
               Workspace:{" "}
               {wsLoading ? (
@@ -691,9 +955,9 @@ export default function ApprovalNew() {
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-500" />
                 Editing request{" "}
                 <b>
-                  {editingRequest.ticketId
-                    ? editingRequest.ticketId
-                    : `REQ-${String(editingRequest._id)
+                  {(editingRequest as any).ticketId
+                    ? (editingRequest as any).ticketId
+                    : `REQ-${String((editingRequest as any)._id)
                         .slice(-6)
                         .toUpperCase()}`}
                 </b>
@@ -717,7 +981,14 @@ export default function ApprovalNew() {
 
         <div className="mt-4 flex flex-wrap gap-2">
           {SERVICE_TYPES.map((s) => (
-            <Chip key={s.key} active={type === s.key} onClick={() => setType(s.key)}>
+            <Chip
+              key={s.key}
+              active={type === s.key}
+              onClick={() => {
+                setErr(null);
+                setType(s.key);
+              }}
+            >
               <span className="mr-1">{s.emoji}</span> {s.label}
             </Chip>
           ))}
@@ -741,6 +1012,230 @@ export default function ApprovalNew() {
         </div>
       ) : null}
 
+      {/* ✅ Request-level Travel Scope + Travellers */}
+      <div className="mt-5 rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="p-5 border-b border-slate-100">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold text-slate-900">
+                Traveller Details
+              </div>
+              <div className="text-xs text-slate-500 mt-0.5">
+                This is attached to the request and flows across flights, hotels,
+                visas, cabs, forex, eSIM, holidays and MICE.
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-widest px-2 py-1 rounded-full bg-slate-100 text-slate-700">
+                {scopeLabel}
+              </span>
+              <span className="text-[10px] uppercase tracking-widest px-2 py-1 rounded-full bg-[#00477f]/10 text-[#00477f]">
+                {travellerCount} Traveller{travellerCount > 1 ? "s" : ""}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Pill
+                  active={travelScope === "domestic"}
+                  title="Domestic"
+                  desc="First Name + Last Name required for each traveller."
+                  onClick={() => setTravelScope("domestic")}
+                />
+                <Pill
+                  active={travelScope === "international"}
+                  title="International"
+                  desc="Add DOB, Passport Number, Passport Expiry and Nationality for each traveller."
+                  onClick={() => setTravelScope("international")}
+                />
+              </div>
+
+              <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs text-slate-700 font-medium">
+                  Quick Preview
+                </div>
+                <div className="mt-1 text-xs text-slate-600">
+                  {travellersPreview?.trim()
+                    ? travellersPreview
+                    : "Add traveller names to preview here."}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="text-xs font-semibold text-slate-900">
+                Traveller Count
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                Keep this aligned with your booking needs. You can change later.
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-sm"
+                  onClick={() => setTravellerCount((p) => Math.max(1, p - 1))}
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-sm"
+                  onClick={() => setTravellerCount((p) => Math.min(12, p + 1))}
+                >
+                  +
+                </button>
+              </div>
+              <div className="mt-2">
+                <Input
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={travellerCount}
+                  onChange={(e) =>
+                    setTravellerCount(
+                      Math.max(1, Math.min(12, safeInt(e.target.value, 1)))
+                    )
+                  }
+                />
+              </div>
+              <div className="mt-2 text-[11px] text-slate-500">
+                Tip: Max 12 per request (increase if needed).
+              </div>
+            </div>
+          </div>
+
+          {/* Travellers list */}
+          <div className="mt-5">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold text-slate-900">
+                Travellers
+              </div>
+              <div className="text-[11px] text-slate-500">
+                {travelScope === "international"
+                  ? "International: all passport fields required."
+                  : "Domestic: only name required."}
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              {ensureTravellersCount(travellers, travellerCount).map(
+                (t, idx) => {
+                  const intl = travelScope === "international";
+
+                  const setT = (k: keyof Traveller, v: any) => {
+                    setTravellers((p) => {
+                      const next = ensureTravellersCount(p, travellerCount);
+                      next[idx] = { ...next[idx], [k]: v };
+                      return next;
+                    });
+                  };
+
+                  return (
+                    <div
+                      key={idx}
+                      className="rounded-3xl border border-slate-200 bg-white overflow-hidden"
+                    >
+                      <div className="px-4 py-3 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-semibold text-slate-900">
+                            Traveller {idx + 1}
+                          </div>
+                          <span
+                            className={cx(
+                              "text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border",
+                              intl
+                                ? "bg-[#d06549]/10 text-[#b54732] border-[#d06549]/20"
+                                : "bg-[#00477f]/10 text-[#00477f] border-[#00477f]/20"
+                            )}
+                          >
+                            {intl ? "International" : "Domestic"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <Field label="First Name">
+                            <Input
+                              value={t.firstName || ""}
+                              onChange={(e) =>
+                                setT("firstName", e.target.value)
+                              }
+                              placeholder="e.g., Rahul"
+                            />
+                          </Field>
+
+                          <Field label="Last Name">
+                            <Input
+                              value={t.lastName || ""}
+                              onChange={(e) => setT("lastName", e.target.value)}
+                              placeholder="e.g., Sharma"
+                            />
+                          </Field>
+                        </div>
+
+                        {intl ? (
+                          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <Field label="Date of Birth">
+                              <Input
+                                type="date"
+                                value={t.dob || ""}
+                                onChange={(e) => setT("dob", e.target.value)}
+                              />
+                            </Field>
+
+                            <Field label="Nationality">
+                              <Input
+                                value={t.nationality || ""}
+                                onChange={(e) =>
+                                  setT("nationality", e.target.value)
+                                }
+                                placeholder="e.g., Indian"
+                              />
+                            </Field>
+
+                            <Field label="Passport Number">
+                              <Input
+                                value={t.passportNumber || ""}
+                                onChange={(e) =>
+                                  setT("passportNumber", e.target.value)
+                                }
+                                placeholder="e.g., K1234567"
+                              />
+                            </Field>
+
+                            <Field label="Passport Expiry Date">
+                              <Input
+                                type="date"
+                                value={t.passportExpiry || ""}
+                                onChange={(e) =>
+                                  setT("passportExpiry", e.target.value)
+                                }
+                              />
+                            </Field>
+                          </div>
+                        ) : (
+                          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
+                            Domestic travel typically needs only traveller names.
+                            If this becomes international later, switch scope and
+                            fill passport fields.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="mt-5 grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* Left: Dynamic Form */}
         <div className="lg:col-span-3">
@@ -752,8 +1247,8 @@ export default function ApprovalNew() {
                     {editing ? "Adjust Service Item" : "Add Service Item"}
                   </div>
                   <div className="text-xs text-slate-500 mt-0.5">
-                    Fill details for <b>{serviceDef.label}</b>. These fields will be
-                    stored in DB under <b>cartItems[].meta</b>.
+                    Fill details for <b>{serviceDef.label}</b>. These fields will
+                    be stored under <b>cartItems[].meta</b>.
                   </div>
                 </div>
                 <div className="px-3 py-1 rounded-full text-xs border border-slate-200 bg-slate-50 text-slate-700">
@@ -761,7 +1256,7 @@ export default function ApprovalNew() {
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Field label="Priority">
                   <Select
                     value={priority}
@@ -783,16 +1278,12 @@ export default function ApprovalNew() {
                     onChange={(e) => setNeedBy(e.target.value)}
                   />
                 </Field>
+              </div>
 
-                <Field label="Estimated Budget (INR)" hint="Optional">
-                  <Input
-                    type="number"
-                    min={0}
-                    value={estimatedBudget}
-                    onChange={(e) => setEstimatedBudget(Number(e.target.value))}
-                    placeholder="e.g., 18500"
-                  />
-                </Field>
+              {/* ✅ Budget frozen notice */}
+              <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-600">
+                Estimated Budget is temporarily disabled for stability. Approvals
+                will proceed based on itinerary details and notes.
               </div>
             </div>
 
@@ -801,10 +1292,14 @@ export default function ApprovalNew() {
               {/* FLIGHT */}
               {type === "flight" ? (
                 <>
-                  <SectionTitle
-                    title="Flight Details"
-                    sub="Origin, destination, dates, cabin, passengers & preferences"
-                  />
+                  <div className="flex items-center justify-between">
+  <SectionTitle
+    title="Flight Details"
+    sub="Origin, destination, dates, cabin, passengers & preferences"
+  />
+
+  </div>
+                    
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <Field label="Trip Type">
                       <Select
@@ -820,7 +1315,9 @@ export default function ApprovalNew() {
                     <Field label="Cabin Class">
                       <Select
                         value={m.cabinClass || "Economy"}
-                        onChange={(e) => setMetaField("cabinClass", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("cabinClass", e.target.value)
+                        }
                       >
                         <option>Economy</option>
                         <option>Premium Economy</option>
@@ -832,7 +1329,9 @@ export default function ApprovalNew() {
                     <Field label="Preferred Time">
                       <Select
                         value={m.preferredTime || "Any"}
-                        onChange={(e) => setMetaField("preferredTime", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("preferredTime", e.target.value)
+                        }
                       >
                         <option>Any</option>
                         <option>Morning</option>
@@ -843,18 +1342,24 @@ export default function ApprovalNew() {
                     </Field>
 
                     <Field label="Origin" hint="Airport / City code">
-                      <Input
+                      <AirportAutocomplete
                         value={m.origin || ""}
-                        onChange={(e) => setMetaField("origin", e.target.value)}
-                        placeholder="e.g., DEL (Delhi)"
+                        onSelect={(a) => {
+                          setMetaField("origin", a.iata);
+                          setMetaField("originMeta", a);
+                        }}
+                        placeholder="From (e.g., DEL / Delhi)"
                       />
                     </Field>
 
                     <Field label="Destination" hint="Airport / City code">
-                      <Input
+                      <AirportAutocomplete
                         value={m.destination || ""}
-                        onChange={(e) => setMetaField("destination", e.target.value)}
-                        placeholder="e.g., BOM (Mumbai)"
+                        onSelect={(a) => {
+                          setMetaField("destination", a.iata);
+                          setMetaField("destinationMeta", a);
+                        }}
+                        placeholder="To (e.g., BOM / Mumbai)"
                       />
                     </Field>
 
@@ -873,17 +1378,21 @@ export default function ApprovalNew() {
                         type="date"
                         min={todayISO()}
                         value={m.departDate || ""}
-                        onChange={(e) => setMetaField("departDate", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("departDate", e.target.value)
+                        }
                       />
                     </Field>
 
-                    {m.tripType === "roundtrip" ? (
+                    {String(m.tripType || "").toLowerCase() === "roundtrip" ? (
                       <Field label="Return Date">
                         <Input
                           type="date"
                           min={todayISO()}
                           value={m.returnDate || ""}
-                          onChange={(e) => setMetaField("returnDate", e.target.value)}
+                          onChange={(e) =>
+                            setMetaField("returnDate", e.target.value)
+                          }
                         />
                       </Field>
                     ) : (
@@ -932,7 +1441,7 @@ export default function ApprovalNew() {
                         }
                       />
                     </Field>
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                       <div className="text-[11px] text-slate-500">Pax Total</div>
                       <div className="text-lg font-semibold text-slate-900">
                         {safeInt(m.adults, 1) +
@@ -941,6 +1450,25 @@ export default function ApprovalNew() {
                       </div>
                     </div>
                   </div>
+                  {/* Search Preview Button */}
+<div className="mt-4 flex justify-end">
+  <button
+    type="button"
+    disabled={!m.origin || !m.destination || !m.departDate}
+    className={cx(
+      "px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm transition",
+      m.origin && m.destination && m.departDate
+        ? "bg-[#00477f] text-white hover:opacity-95"
+        : "bg-slate-200 text-slate-500 cursor-not-allowed"
+    )}
+    onClick={() => {
+      setPreviewMode("flight");
+      setPreviewOpen(true);
+    }}
+  >
+    🔍 Search Flights (Indicative Prices)
+  </button>
+</div>
 
                   <div className="mt-4 flex flex-wrap gap-3">
                     <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -984,18 +1512,26 @@ export default function ApprovalNew() {
               {/* HOTEL */}
               {type === "hotel" ? (
                 <>
-                  <SectionTitle
-                    title="Hotel Details"
-                    sub="City, dates, rooms, star rating, room & meal preferences"
-                  />
+                  <div className="flex items-center justify-between">
+  <SectionTitle
+    title="Hotel Details"
+    sub="Manual entry (City / Area / Preferred Hotel)"
+  />
+
+  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <Field label="Destination City">
+                    <Field
+                      label="City / Area / Hotel Name"
+                      hint="Manual entry (no search)"
+                    >
                       <Input
                         value={m.city || ""}
                         onChange={(e) => setMetaField("city", e.target.value)}
-                        placeholder="e.g., Mumbai"
+                        placeholder="Hotel City or Locality"
                       />
                     </Field>
+
                     <Field label="Check-in">
                       <Input
                         type="date"
@@ -1009,7 +1545,9 @@ export default function ApprovalNew() {
                         type="date"
                         min={todayISO()}
                         value={m.checkOut || ""}
-                        onChange={(e) => setMetaField("checkOut", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("checkOut", e.target.value)
+                        }
                       />
                     </Field>
 
@@ -1047,7 +1585,9 @@ export default function ApprovalNew() {
                     <Field label="Hotel Type">
                       <Select
                         value={m.hotelType || "Business"}
-                        onChange={(e) => setMetaField("hotelType", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("hotelType", e.target.value)
+                        }
                       >
                         <option>Business</option>
                         <option>Boutique</option>
@@ -1060,7 +1600,9 @@ export default function ApprovalNew() {
                     <Field label="Star Rating">
                       <Select
                         value={m.starRating || "Any"}
-                        onChange={(e) => setMetaField("starRating", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("starRating", e.target.value)
+                        }
                       >
                         <option>Any</option>
                         <option>3 Star</option>
@@ -1072,7 +1614,9 @@ export default function ApprovalNew() {
                     <Field label="Room Type">
                       <Select
                         value={m.roomType || "Standard"}
-                        onChange={(e) => setMetaField("roomType", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("roomType", e.target.value)
+                        }
                       >
                         <option>Standard</option>
                         <option>Deluxe</option>
@@ -1084,7 +1628,9 @@ export default function ApprovalNew() {
                     <Field label="Meal Plan">
                       <Select
                         value={m.mealPlan || "Breakfast"}
-                        onChange={(e) => setMetaField("mealPlan", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("mealPlan", e.target.value)
+                        }
                       >
                         <option>Breakfast</option>
                         <option>Half Board</option>
@@ -1103,6 +1649,26 @@ export default function ApprovalNew() {
                       />
                     </Field>
                   </div>
+
+                  {/* Search Preview Button */}
+<div className="mt-4 flex justify-end">
+  <button
+    type="button"
+    disabled={!m.city || !m.checkIn || !m.checkOut}
+    className={cx(
+      "px-5 py-2.5 rounded-xl text-sm font-medium shadow-sm transition",
+      m.city && m.checkIn && m.checkOut
+        ? "bg-[#00477f] text-white hover:opacity-95"
+        : "bg-slate-200 text-slate-500 cursor-not-allowed"
+    )}
+    onClick={() => {
+      setPreviewMode("hotel");
+      setPreviewOpen(true);
+    }}
+  >
+    🔍 Search Hotels (Indicative Prices)
+  </button>
+</div>
 
                   <div className="mt-4">
                     <Field
@@ -1468,7 +2034,9 @@ export default function ApprovalNew() {
                         type="date"
                         min={todayISO()}
                         value={m.startDate || ""}
-                        onChange={(e) => setMetaField("startDate", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("startDate", e.target.value)
+                        }
                       />
                     </Field>
 
@@ -1514,10 +2082,7 @@ export default function ApprovalNew() {
                   </div>
 
                   <div className="mt-4">
-                    <Field
-                      label="Item Notes (optional)"
-                      hint="Device model, hotspots, etc."
-                    >
+                    <Field label="Item Notes (optional)" hint="Device model, hotspots, etc.">
                       <Textarea
                         rows={3}
                         value={m.notes || ""}
@@ -1552,7 +2117,9 @@ export default function ApprovalNew() {
                         type="date"
                         min={todayISO()}
                         value={m.startDate || ""}
-                        onChange={(e) => setMetaField("startDate", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("startDate", e.target.value)
+                        }
                       />
                     </Field>
 
@@ -1581,7 +2148,9 @@ export default function ApprovalNew() {
                     <Field label="Budget Band">
                       <Select
                         value={m.budgetBand || "Premium"}
-                        onChange={(e) => setMetaField("budgetBand", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("budgetBand", e.target.value)
+                        }
                       >
                         <option>Premium</option>
                         <option>Luxury</option>
@@ -1593,7 +2162,9 @@ export default function ApprovalNew() {
                     <Field label="Hotel Class">
                       <Select
                         value={m.hotelClass || "4 Star"}
-                        onChange={(e) => setMetaField("hotelClass", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("hotelClass", e.target.value)
+                        }
                       >
                         <option>3 Star</option>
                         <option>4 Star</option>
@@ -1691,7 +2262,9 @@ export default function ApprovalNew() {
                         type="date"
                         min={todayISO()}
                         value={m.startDate || ""}
-                        onChange={(e) => setMetaField("startDate", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("startDate", e.target.value)
+                        }
                       />
                     </Field>
 
@@ -1707,7 +2280,9 @@ export default function ApprovalNew() {
                     <Field label="Travel Mode">
                       <Select
                         value={m.travelMode || "Flights"}
-                        onChange={(e) => setMetaField("travelMode", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("travelMode", e.target.value)
+                        }
                       >
                         <option>Flights</option>
                         <option>Train</option>
@@ -1720,7 +2295,9 @@ export default function ApprovalNew() {
                     <Field label="Hotel Type">
                       <Select
                         value={m.hotelType || "4 Star"}
-                        onChange={(e) => setMetaField("hotelType", e.target.value)}
+                        onChange={(e) =>
+                          setMetaField("hotelType", e.target.value)
+                        }
                       >
                         <option>3 Star</option>
                         <option>4 Star</option>
@@ -1747,10 +2324,7 @@ export default function ApprovalNew() {
                   </div>
 
                   <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <Field
-                      label="Services Needed"
-                      hint="What should PlumTrips manage?"
-                    >
+                    <Field label="Services Needed" hint="What should PlumTrips manage?">
                       <Input
                         value={m.servicesNeeded || ""}
                         onChange={(e) =>
@@ -1782,10 +2356,7 @@ export default function ApprovalNew() {
                   </div>
 
                   <div className="mt-4">
-                    <Field
-                      label="Item Notes (optional)"
-                      hint="Agenda, sessions, speakers, rooming, etc."
-                    >
+                    <Field label="Item Notes (optional)" hint="Agenda, sessions, speakers, rooming, etc.">
                       <Textarea
                         rows={3}
                         value={m.notes || ""}
@@ -1810,18 +2381,17 @@ export default function ApprovalNew() {
                   type="button"
                   onClick={() => {
                     setMetaField("notes", "");
-                    setEstimatedBudget(0);
                     setErr(null);
                   }}
                   className="w-full md:w-auto px-5 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                 >
-                  Clear Notes / Budget
+                  Clear Notes
                 </button>
               </div>
 
               <div className="mt-4 text-[11px] text-slate-500">
-                Tip: Keep budgets approximate. Approvers use this for fast approval and
-                reporting.
+                Tip: Add enough details in notes for fast approvals (timings,
+                preferences, reason/urgency).
               </div>
             </div>
           </div>
@@ -1844,26 +2414,34 @@ export default function ApprovalNew() {
                   Total: <b>₹{niceMoney(total)}</b>
                 </div>
               </div>
+
+              <div className="mt-2 text-[11px] text-slate-500">
+                Budget is currently disabled, so totals will remain ₹0.
+              </div>
             </div>
 
             <div className="p-5">
               {cart.length ? (
                 <div className="space-y-3">
-                  {cart.map((c, idx) => {
+                  {cart.map((c: any, idx) => {
                     const label =
-                      SERVICE_TYPES.find(
-                        (s) => s.key === (c.type as ServiceKey)
-                      )?.label || String(c.type);
+                      SERVICE_TYPES.find((s) => s.key === (c.type as ServiceKey))
+                        ?.label || String(c.type);
+                    const mm = (c as any).meta || {};
+
                     const metaLine = (() => {
-                      const mm = (c as any).meta || {};
                       if (c.type === "flight")
                         return `${mm.origin || "—"} → ${mm.destination || "—"} • ${
                           mm.cabinClass || "—"
                         } • ${mm.departDate || "—"}`;
-                      if (c.type === "hotel")
-                        return `${mm.city || "—"} • ${mm.checkIn || "—"} to ${
+
+                      if (c.type === "hotel") {
+                        const hotelLine = mm.city || "—";
+                        return `${hotelLine} • ${mm.checkIn || "—"} to ${
                           mm.checkOut || "—"
                         } • Rooms ${mm.rooms ?? 1}`;
+                      }
+
                       if (c.type === "visa")
                         return `${mm.destinationCountry || "—"} • ${
                           mm.visaType || "—"
@@ -1885,30 +2463,52 @@ export default function ApprovalNew() {
                           mm.days || 0
                         } days • People ${mm.people || 1}`;
                       if (c.type === "mice")
-                        return `${mm.mode || "—"} • ${
-                          mm.location || "—"
-                        } • Attendees ${mm.attendees || 0}`;
+                        return `${mm.mode || "—"} • ${mm.location || "—"} • Attendees ${
+                          mm.attendees || 0
+                        }`;
                       return "";
                     })();
 
+                    const travellerMini = (() => {
+                      const trs = Array.isArray(mm.travellers) ? mm.travellers : [];
+                      if (!trs.length) return "";
+                      const names = trs
+                        .slice(0, 2)
+                        .map((t: any) =>
+                          `${ensureStr(t.firstName) || "—"} ${ensureStr(t.lastName) || ""}`.trim()
+                        )
+                        .join(", ");
+                      return trs.length > 2 ? `${names} +${trs.length - 2}` : names;
+                    })();
+
                     return (
-                      <div
-                        key={idx}
-                        className="rounded-2xl border border-slate-200 p-4"
-                      >
+                      <div key={idx} className="rounded-2xl border border-slate-200 p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="text-xs text-slate-500">{label}</div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-xs text-slate-500">{label}</div>
+                              {(mm.travelScope || travelScope) ? (
+                                <span className="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                                  {String(mm.travelScope || travelScope)}
+                                </span>
+                              ) : null}
+                            </div>
+
                             <div className="font-medium text-slate-900 truncate">
                               {c.title || "Request Item"}
                             </div>
+                            <div className="text-xs text-slate-600 mt-1">{metaLine}</div>
+
+                            {travellerMini ? (
+                              <div className="text-xs text-slate-600 mt-1">
+                                Travellers: <b className="text-slate-800">{travellerMini}</b>
+                              </div>
+                            ) : null}
+
                             <div className="text-xs text-slate-600 mt-1">
-                              {metaLine}
+                              Qty <b>{c.qty || 1}</b> • ₹<b>{niceMoney(Number(c.price || 0))}</b>
                             </div>
-                            <div className="text-xs text-slate-600 mt-1">
-                              Qty <b>{c.qty || 1}</b> • ₹
-                              <b>{niceMoney(Number(c.price || 0))}</b>
-                            </div>
+
                             {c.description ? (
                               <div className="text-sm text-slate-700 mt-2">
                                 {c.description}
@@ -1934,10 +2534,7 @@ export default function ApprovalNew() {
               )}
 
               <div className="mt-5">
-                <Field
-                  label="Comment to Approver"
-                  hint="Reason, urgency, traveler details"
-                >
+                <Field label="Comment to Approver" hint="Reason, urgency, traveler details">
                   <Textarea
                     rows={4}
                     value={comments}
@@ -1948,12 +2545,7 @@ export default function ApprovalNew() {
               </div>
 
               <button
-                disabled={
-                  saving ||
-                  editLoading ||
-                  wsLoading ||
-                  (!customerId && !editing)
-                }
+                disabled={saving || editLoading || wsLoading || (!customerId && !editing)}
                 className="mt-4 w-full px-4 py-3 rounded-2xl bg-[#d06549] text-white font-medium shadow-sm disabled:opacity-60 hover:opacity-95"
                 onClick={submit}
               >
@@ -1970,19 +2562,54 @@ export default function ApprovalNew() {
 
               {!wsLoading && !customerId && !editing ? (
                 <div className="mt-2 text-xs text-red-600">
-                  Workspace missing for this login. Ask Admin to create/link Business
-                  workspace (MasterData) or set DEFAULT_CUSTOMER_BUSINESS_ID on backend.
+                  Workspace missing for this login. Ask Admin to create/link Business workspace (MasterData) or set DEFAULT_CUSTOMER_BUSINESS_ID on backend.
                 </div>
               ) : null}
 
               <div className="mt-3 text-[11px] text-slate-500">
-                Once {editing ? "saved" : "submitted"}, the same structured details
-                will appear in <b>My Requests</b> and in the <b>Approver Inbox</b>.
+                Once {editing ? "saved" : "submitted"}, the same structured details will appear in{" "}
+                <b>My Requests</b> and in the <b>Approver Inbox</b>.
               </div>
             </div>
           </div>
         </div>
       </div>
+      <SearchPreviewDrawer
+  open={previewOpen}
+  mode={previewMode}
+  query={
+    previewMode === "flight"
+      ? {
+          origin: m.origin,
+          destination: m.destination,
+          departDate: m.departDate,
+          returnDate: m.returnDate,
+          adults: m.adults,
+          children: m.children,
+          cabinClass: m.cabinClass,
+        }
+      : {
+          city: m.city,
+          checkIn: m.checkIn,
+          checkOut: m.checkOut,
+          adults: m.adults,
+          rooms: m.rooms,
+        }
+  }
+  onClose={() => setPreviewOpen(false)}
+  onUseHint={({ patch, note }) => {
+    if (patch) {
+      Object.entries(patch).forEach(([k, v]) =>
+        setMetaField(k, v)
+      );
+    }
+    setMetaField(
+      "notes",
+      [m.notes, note].filter(Boolean).join("\n")
+    );
+    setPreviewOpen(false);
+  }}
+/>
     </div>
   );
 }

@@ -1,10 +1,6 @@
 // MyProfileCustomer.tsx (DROP-IN REPLACEMENT)
-// Logo fixes added (frontend + UI):
-// ✅ Shows allowed file types + max size (2MB from multer) + recommended/max px
-// ✅ Reads image dimensions (px) before upload and blocks invalid files
-// ✅ Shows the selected file’s size + px so user knows what they’re uploading
-// ✅ Fix “torn” logo by using object-fit: contain (not cover) + proper background
-// ✅ Better error message when backend returns "File too large"
+// Fix: Align profile identity + logo with login-based Customer (`/workspace/me` returns { workspace, customer })
+// Note: Keeping current logo upload flow (multipart) because /workspace/logo backend impl was not provided.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -27,8 +23,8 @@ const API_UPLOAD = "/api/v1/workspace/logo";
   Backend: limits: { fileSize: 2 * 1024 * 1024 } // 2MB
 --------------------------------------------- */
 const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2MB
-const LOGO_RECOMMENDED_PX = 512; // best for your 92px avatar block
-const LOGO_MAX_PX = 1024; // safe upper bound for quality/perf
+const LOGO_RECOMMENDED_PX = 512;
+const LOGO_MAX_PX = 1024;
 
 /* ---------------------------------------------
   Services
@@ -197,7 +193,7 @@ function withCacheBust(url: string) {
 }
 
 function readAccessTokenFromSomewhere(userMaybe: any): string {
-  const keys = ["accessToken", "hrms:accessToken", "pt:accessToken", "plumtrips:accessToken", "jwt", "token"];
+  const keys = ["accessToken", "hrms:accessToken", "pt:accessToken", "plumtrips:accessToken", "jwt", "token", "hrms_accessToken"];
 
   const fromCtx = userMaybe?.accessToken || userMaybe?.token || userMaybe?.jwt || userMaybe?.authToken || "";
   if (fromCtx && typeof fromCtx === "string") return fromCtx;
@@ -271,6 +267,49 @@ function readImageDimensions(file: File): Promise<{ width: number; height: numbe
 }
 
 /* ---------------------------------------------
+  Customer identity helpers (login-aligned)
+--------------------------------------------- */
+function pickCustomerDisplayName(customer: any, fallbackEmail: string) {
+  const c = customer || {};
+  const p = c?.payload || {};
+  const name =
+    c?.companyName ||
+    c?.businessName ||
+    c?.name ||
+    p?.companyName ||
+    p?.businessName ||
+    p?.name ||
+    p?.legalName ||
+    c?.legalName ||
+    "";
+  const cleaned = String(name || "").trim();
+  if (cleaned) return cleaned;
+  return String(fallbackEmail || "Workspace").trim() || "Workspace";
+}
+
+function pickCustomerLogoUrl(customer: any, workspace: any) {
+  const c = customer || {};
+  const p = c?.payload || {};
+  const w = workspace || {};
+  const raw =
+    c?.logoUrl ||
+    c?.logo ||
+    c?.companyLogoUrl ||
+    c?.companyLogo ||
+    p?.logoUrl ||
+    p?.logo ||
+    p?.companyLogoUrl ||
+    p?.companyLogo ||
+    // fallback (if your logo is stored on CustomerWorkspace in future)
+    w?.logoUrl ||
+    w?.logo ||
+    w?.companyLogoUrl ||
+    w?.companyLogo ||
+    "";
+  return resolveAssetUrl(String(raw || "").trim());
+}
+
+/* ---------------------------------------------
   Types
 --------------------------------------------- */
 type RawRow = Record<string, unknown>;
@@ -309,26 +348,14 @@ function Chip({ active, children, onClick }: { active?: boolean; children: React
   );
 }
 
-function Glass({
-  children,
-  className = "",
-  style,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  style?: React.CSSProperties;
-}) {
+function Glass({ children, className = "", style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
     <div
-      className={`rounded-[28px] ${className}`}
-      style={{
-        border: "1px solid rgba(255,255,255,.12)",
-        background: "rgba(255,255,255,.06)",
-        boxShadow: "0 18px 50px rgba(0,0,0,.30)",
-        backdropFilter: "blur(14px)",
-        ...style,
-      }}
+      className={`relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-white/[0.02] backdrop-blur-3xl shadow-2xl ${className}`}
+      style={style}
     >
+      {/* HUD-style accent line */}
+      <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500/20 to-transparent" />
       {children}
     </div>
   );
@@ -352,13 +379,57 @@ export default function MyProfileCustomer() {
     return String(fromAuth || fromLS || "—");
   }, [user]);
 
-  const [workspaceName, setWorkspaceName] = useState<string>("Workspace Leader");
+  // --- AI Neural Background Logic ---
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    let particles: any[] = [];
+    const init = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      particles = Array.from({ length: 45 }, () => ({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: (Math.random() - 0.5) * 0.3,
+        size: Math.random() * 1.5
+      }));
+    };
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.forEach((p, i) => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(100, 180, 255, 0.4)"; ctx.fill();
+        for (let j = i + 1; j < particles.length; j++) {
+          const p2 = particles[j];
+          const dist = Math.sqrt((p.x - p2.x)**2 + (p.y - p2.y)**2);
+          if (dist < 150) {
+            ctx.beginPath();
+            ctx.strokeStyle = `rgba(100, 180, 255, ${0.12 * (1 - dist/150)})`;
+            ctx.lineWidth = 0.5; ctx.moveTo(p.x, p.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+          }
+        }
+      });
+      requestAnimationFrame(animate);
+    };
+    init(); animate();
+    window.addEventListener("resize", init);
+    return () => window.removeEventListener("resize", init);
+  }, []);
+
+  const [workspaceName, setWorkspaceName] = useState<string>("Workspace");
   const [logoUrl, setLogoUrl] = useState<string>("");
 
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoErr, setLogoErr] = useState<string | null>(null);
 
-  // NEW: show user guidance + actual chosen file info
   const [logoMeta, setLogoMeta] = useState<{ name: string; bytes: number; width: number; height: number } | null>(null);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -426,24 +497,29 @@ export default function MyProfileCustomer() {
     try {
       const j = await fetchJson(API_ME, { token });
 
-      const ws = j?.workspace || j?.data?.workspace || j?.me?.workspace || j?.business || j?.customer || j;
+      // Your backend returns: { ok: true, workspace: ws, customer }
+      const workspace = j?.workspace || j?.data?.workspace || null;
+      const customer = j?.customer || j?.data?.customer || j?.business || j?.customerProfile || null;
 
-      const name = String(ws?.name || ws?.companyName || ws?.workspaceName || "Workspace Leader");
-      const logo = String(ws?.logoUrl || ws?.logo || ws?.companyLogoUrl || ws?.companyLogo || "");
+      const display = pickCustomerDisplayName(customer, email);
+      const logo = pickCustomerLogoUrl(customer, workspace);
 
-      setWorkspaceName(name);
-      setLogoUrl(resolveAssetUrl(logo));
+      setWorkspaceName(display);
+      setLogoUrl(logo);
     } catch (e: any) {
       if (String(e?.message || "").includes("(401)") && typeof refreshSession === "function") {
         try {
           await refreshSession();
           const j2 = await fetchJson(API_ME, { token: readAccessTokenFromSomewhere(authAny) });
-          const ws2 = j2?.workspace || j2?.data?.workspace || j2?.me?.workspace || j2?.business || j2?.customer || j2;
 
-          const name2 = String(ws2?.name || ws2?.companyName || ws2?.workspaceName || "Workspace Leader");
-          const logo2 = String(ws2?.logoUrl || ws2?.logo || ws2?.companyLogoUrl || ws2?.companyLogo || "");
-          setWorkspaceName(name2);
-          setLogoUrl(resolveAssetUrl(logo2));
+          const workspace2 = j2?.workspace || j2?.data?.workspace || null;
+          const customer2 = j2?.customer || j2?.data?.customer || j2?.business || j2?.customerProfile || null;
+
+          const display2 = pickCustomerDisplayName(customer2, email);
+          const logo2 = pickCustomerLogoUrl(customer2, workspace2);
+
+          setWorkspaceName(display2);
+          setLogoUrl(logo2);
           return;
         } catch (e2: any) {
           setLogoErr(e2?.message || "Failed to load workspace profile.");
@@ -502,7 +578,6 @@ export default function MyProfileCustomer() {
     }
   }
 
-  // NEW: pre-validate + show size + px to user before upload
   async function handleLogoPicked(file: File) {
     setLogoErr(null);
     setLogoMeta(null);
@@ -665,13 +740,12 @@ export default function MyProfileCustomer() {
   }, []);
 
   return (
-    <div
-      className="min-h-[calc(100vh-64px)]"
-      style={{
-        background:
-          "radial-gradient(1000px 500px at 20% 0%, rgba(0,71,127,.08), transparent 55%), radial-gradient(900px 480px at 82% 10%, rgba(208,101,73,.08), transparent 55%), linear-gradient(180deg, rgba(250,250,252,1), rgba(244,245,248,1))",
-      }}
-    >
+    <div className="relative min-h-screen w-full bg-[#050a18] text-white font-mono selection:bg-blue-500/30">
+  {/* Moving Neural Network Layer */}
+  <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0 opacity-50" />
+  
+  {/* Soft Blue Glow Overlay */}
+  <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(20,60,120,0.3)_0%,transparent_75%)] pointer-events-none" />
       <div className="mx-auto max-w-7xl px-4 py-6">
         <div
           className="rounded-[34px] p-[18px]"
@@ -711,14 +785,14 @@ export default function MyProfileCustomer() {
                             alt="Workspace logo"
                             className="h-full w-full"
                             style={{
-                              objectFit: "contain", // ✅ fixes “torn / cropped” look
-                              padding: 10, // gives breathing space for non-square logos
+                              objectFit: "contain",
+                              padding: 10,
                               filter: "drop-shadow(0 8px 16px rgba(0,0,0,.28))",
                             }}
                             onError={() => {
                               setLogoUrl("");
                               setLogoErr(
-                                "Logo URL is not serving an image (often it’s HTML from Vite). Fix: serve /uploads from backend origin or set VITE_BACKEND_ORIGIN.",
+                                "Logo URL is not serving an image. Fix backend serving or ensure stored logo URL points to an image.",
                               );
                             }}
                           />
@@ -730,62 +804,80 @@ export default function MyProfileCustomer() {
                       )}
                     </button>
 
-                    <button
-                      type="button"
-                      className="mt-2 rounded-full px-3 py-1 text-xs"
-                      style={{
-                        border: "1px solid rgba(255,255,255,.14)",
-                        background: "rgba(255,255,255,.06)",
-                        color: "rgba(255,255,255,.85)",
-                      }}
-                      onClick={() => fileRef.current?.click()}
-                      disabled={logoUploading}
-                    >
-                      {logoUploading ? "Uploading…" : "Change"}
-                    </button>
+                  {/* PASTE THIS INSTEAD */}
+<div className="flex flex-col items-center">
+  {/* The "Change" Button styled for AI Pro */}
+  <button
+    type="button"
+    className="mt-2 rounded-full px-6 py-1.5 text-[10px] font-black uppercase tracking-widest transition-all hover:bg-white/10 active:scale-95"
+    style={{
+      border: "1px solid rgba(255,255,255,.14)",
+      background: "rgba(255,255,255,.05)",
+      color: "rgba(255,255,255,.90)",
+    }}
+    onClick={() => fileRef.current?.click()}
+    disabled={logoUploading}
+  >
+    {logoUploading ? "SYNCING..." : "CHANGE_NODE_LOGO"}
+  </button>
 
-                    {/* NEW: guidance + selected file meta */}
-                    <div className="mt-2 text-center text-[11px]" style={{ color: "rgba(255,255,255,.58)", maxWidth: 210 }}>
-                      {logoGuidance}
-                      {logoMeta && (
-                        <div className="mt-1" style={{ color: "rgba(255,255,255,.70)" }}>
-                          Selected: {logoMeta.width}×{logoMeta.height}px • {bytesToHuman(logoMeta.bytes)}
-                        </div>
-                      )}
-                    </div>
+  {/* Technical Info Trigger (Info Icon) */}
+  <div className="mt-4 flex items-center gap-2 group/info relative">
+    <div className="cursor-help rounded-full border border-white/20 w-5 h-5 flex items-center justify-center text-[10px] text-white/40 group-hover/info:border-blue-400 group-hover/info:text-blue-400 transition-all font-bold">
+      i
+    </div>
+    
+    {/* The Hidden Hover Box (Tooltip) */}
+    <div className="opacity-0 group-hover/info:opacity-100 transition-opacity duration-300 pointer-events-none absolute top-7 bg-[#0a0a0f] border border-white/10 p-3 rounded-xl shadow-2xl z-50 min-w-[200px] text-center">
+      <div className="text-[9px] text-blue-400 font-black tracking-widest uppercase mb-1">Upload_Specs</div>
+      <p className="text-[10px] leading-tight text-white/60">
+        {logoGuidance}
+      </p>
+      {logoMeta && (
+        <div className="mt-2 pt-2 border-t border-white/5 text-[9px] text-green-400 font-bold uppercase tracking-tighter">
+          Loaded: {logoMeta.width}×{logoMeta.height}px • {bytesToHuman(logoMeta.bytes)}
+        </div>
+      )}
+    </div>
+  </div>
+</div>
                   </div>
 
                   <div className="flex-1">
                     <div className="text-xs tracking-[0.28em]" style={{ color: "rgba(255,255,255,.55)" }}>
                       PLUMTRIPS
                     </div>
+<div className="flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 w-fit mb-3">
+  <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+  <span className="text-[9px] font-black tracking-[0.3em] text-blue-300 uppercase">System_Active</span>
+</div>
                     <div className="mt-1 text-[22px] font-semibold text-white">Customer Experience Centre</div>
                     <div className="mt-1 text-sm" style={{ color: "rgba(255,255,255,.70)" }}>
                       Corporate travel profile • spend intelligence • approvals — a single command console.
                     </div>
 
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <div
-                        className="rounded-2xl px-4 py-3"
-                        style={{ border: "1px solid rgba(255,255,255,.12)", background: "rgba(0,0,0,.18)" }}
-                      >
-                        <div className="text-[11px] tracking-[0.24em]" style={{ color: "rgba(255,255,255,.55)" }}>
-                          WORKSPACE
-                        </div>
-                        <div className="mt-1 text-sm font-semibold text-white">{workspaceName}</div>
-                      </div>
+                    {/* --- AI PRO REPLACEMENT WITH TEXT WRAPPING --- */}
+<div className="mt-4 grid gap-3 md:grid-cols-2">
+  {/* Left Box: Business Node */}
+  <div className="bg-black/30 border border-white/5 p-4 rounded-2xl hover:border-blue-500/20 transition-all group min-w-0">
+    <div className="text-[8px] text-blue-400/60 font-black tracking-[0.3em] uppercase mb-1 group-hover:text-blue-400">
+      NODE_IDENTITY
+    </div>
+    <div className="text-sm font-bold text-white uppercase tracking-tight truncate">
+      {workspaceName}
+    </div>
+  </div>
 
-                      <div
-                        className="rounded-2xl px-4 py-3"
-                        style={{ border: "1px solid rgba(255,255,255,.12)", background: "rgba(0,0,0,.18)" }}
-                      >
-                        <div className="text-[11px] tracking-[0.24em]" style={{ color: "rgba(255,255,255,.55)" }}>
-                          EMAIL
-                        </div>
-                        <div className="mt-1 text-sm font-semibold text-white">{email}</div>
-                      </div>
-                    </div>
-
+  {/* Right Box: Email Link (Fixed for Wrapping) */}
+  <div className="bg-black/30 border border-white/5 p-4 rounded-2xl hover:border-blue-500/20 transition-all group min-w-0">
+    <div className="text-[8px] text-blue-400/60 font-black tracking-[0.3em] uppercase mb-1 group-hover:text-blue-400">
+      AUTH_EMAIL_LINK
+    </div>
+    <div className="text-sm font-bold text-white tracking-tight break-all leading-tight">
+      {email}
+    </div>
+  </div>
+</div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {[{ label: "7 services" }, { label: `${kpis.travellers || 0} travellers` }, { label: sourceLabel }].map(
                         (x, i) => (
@@ -804,7 +896,6 @@ export default function MyProfileCustomer() {
                       )}
                     </div>
 
-                    {/* Actions */}
                     <div className="mt-4 flex flex-wrap gap-2 items-center">
                       <button
                         className="rounded-full px-4 py-2 text-xs font-medium"
@@ -833,7 +924,6 @@ export default function MyProfileCustomer() {
                         {loading ? "Refreshing…" : "Refresh CSV"}
                       </button>
 
-                      {/* Upload input */}
                       <input
                         ref={fileRef}
                         type="file"
@@ -902,7 +992,7 @@ export default function MyProfileCustomer() {
                       color: "rgba(255,255,255,.92)",
                     }}
                     type="button"
-                    onClick={() => navigate("/customer/contacts")}
+                    onClick={() => navigate("/customer/approvals/inbox")}
                   >
                     View requests
                   </button>

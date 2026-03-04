@@ -13,8 +13,6 @@ import Forgot from "./pages/auth/Forgot";
 import PublicOnboarding from "./pages/onboarding/Public";
 import PublicFlow from "./pages/onboarding/PublicFlow";
 
-
-
 // Protected pages
 import MyProfile from "./pages/profile/MyProfile";
 import EmployeeDash from "./pages/dashboard/Employee";
@@ -54,12 +52,11 @@ import ApprovalNew from "./pages/customer/approvals/ApprovalNew";
 import ApprovalMine from "./pages/customer/approvals/ApprovalMine";
 import ApproverInbox from "./pages/customer/approvals/ApproverInbox";
 
+// ✅ NEW: Customer proposals inbox
+import CustomerProposalsInbox from "./pages/customer/approvals/CustomerProposalsInbox";
+
 // ✅ Public deep-link for email approvals (no login)
 import EmailApprovalAction from "./pages/public/EmailApprovalAction";
-
-// ✅ Optional: if you keep a dedicated page in /pages/approvals,
-// you can render it from EmailApprovalAction; router does NOT need to import it.
-// import ApprovalEmail from "./pages/approvals/ApprovalEmail";
 
 import VendorsOnboard from "./pages/vendors/Onboard";
 import VendorsPipeline from "./pages/vendors/Pipeline";
@@ -84,6 +81,21 @@ import UserCreation from "./pages/admin/UserCreation";
 import BookingHistory from "./pages/approvals/BookingHistory";
 
 import Protected from "./router/Protected";
+
+// ✅ Proposals (admin)
+import AdminProposalByRequest from "./pages/admin/proposals/AdminProposalByRequest";
+
+// ✅ Voucher Extractor pages
+import VoucherExtract from "./pages/customer/vouchers/VoucherExtract";
+import AdminVouchers from "./pages/admin/vouchers/AdminVouchers";
+
+// ✅ Copilot (Dedicated Page)
+import CopilotPage from "./pages/copilot/CopilotPage";
+
+// ✅ AI Concierge (Travel / Holidays / MICE / Events)
+import ConciergePage from "./pages/concierge/ConciergePage";
+
+import Splash from "./pages/Splash";
 
 /* -------------------------------------------------------------------------- */
 /* Small helpers                                                              */
@@ -246,11 +258,25 @@ function isApprover(user: AnyUser | null | undefined): boolean {
 }
 
 /**
+ * ✅ Staff admin check (for Option A)
+ * Allows Admin/HR/SuperAdmin to open customer approvals pages.
+ */
+function isStaffAdmin(user: AnyUser | null | undefined): boolean {
+  if (!user) return false;
+  return hasAnyRole(user, [
+    "ADMIN",
+    "SUPERADMIN",
+    "SUPER_ADMIN",
+    "HR",
+    "HR_ADMIN",
+    "OPS",
+    "OPS_ADMIN",
+  ]);
+}
+
+/**
  * ✅ Who can access User Creation:
  * HR / Admin / SuperAdmin + Workspace Leader (Customer) + Approver
- *
- * NOTE: We intentionally treat any "Customer persona" as eligible to SEE the page,
- * because backend will still enforce fine-grained rules (Requester blocked, etc.).
  */
 function canAccessUserCreation(user: AnyUser | null | undefined): boolean {
   if (!user) return false;
@@ -309,11 +335,16 @@ function ProfileVendorRoute() {
   return <MyProfileVendor />;
 }
 
-/** Gate: Customers only */
+/** Gate: Customers only (Option A: also allow staff admins) */
 function CustomerOnly({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+
   if (isVendor(user as AnyUser)) return <Navigate to="/profile/vendor" replace />;
-  if (!isCustomer(user as AnyUser)) return <Navigate to="/profile/me" replace />;
+
+  // ✅ Option A: Admin/HR can access customer approvals pages too
+  const ok = isCustomer(user as AnyUser) || isStaffAdmin(user as AnyUser);
+  if (!ok) return <Navigate to="/profile/me" replace />;
+
   return <>{children}</>;
 }
 
@@ -345,17 +376,25 @@ const router = createBrowserRouter([
 
   /**
    * ✅ Public email approval deep link (no login)
-   * IMPORTANT:
-   * - This path MUST match what backend emails generate (FRONTEND_PUBLIC_URL + EMAIL_APPROVAL_PATH).
-   * - This page should call POST /api/approvals/email/consume (backend).
    */
   { path: "/approval/email", element: <EmailApprovalAction /> },
+
+  /* ================= SPLASH (PROTECTED, NO APP SHELL) ================= */
+  {
+    path: "/splash",
+    element: (
+      <Protected>
+        <Splash />
+      </Protected>
+    ),
+  },
 
   /* ================= APP SHELL (PROTECTED) ================= */
   {
     path: "/",
     element: <App />,
     children: [
+
       /* -------- Default Home / Index -------- */
       {
         index: true,
@@ -365,6 +404,15 @@ const router = createBrowserRouter([
           </Protected>
         ),
       },
+      
+      {
+  path: "concierge",
+  element: (
+    <Protected>
+      <ConciergePage />
+    </Protected>
+  ),
+},
 
       /* -------- Dashboards -------- */
       {
@@ -556,7 +604,19 @@ const router = createBrowserRouter([
         ),
       },
 
-      /* -------- ✅ Customer Approval Flow (Customer-only) -------- */
+      /* -------- ✅ Voucher Extractor (Customer + staff admin via CustomerOnly) -------- */
+      {
+        path: "customer/vouchers/extract",
+        element: (
+          <Protected>
+            <CustomerOnly>
+              <VoucherExtract />
+            </CustomerOnly>
+          </Protected>
+        ),
+      },
+
+      /* -------- ✅ Customer Approval Flow (Option A allows staff admins too) -------- */
       {
         path: "customer/approvals/new",
         element: (
@@ -588,7 +648,19 @@ const router = createBrowserRouter([
         ),
       },
 
-      /* -------- ✅ Booking History (L0/L1/L2/HR/Admin) -------- */
+      /* ✅ NEW: Customer proposals inbox (customer/staff admin via CustomerOnly) */
+      {
+        path: "customer/approvals/proposals",
+        element: (
+          <Protected>
+            <CustomerOnly>
+              <CustomerProposalsInbox />
+            </CustomerOnly>
+          </Protected>
+        ),
+      },
+
+      /* -------- ✅ Booking History -------- */
       {
         path: "booking-history",
         element: (
@@ -642,7 +714,7 @@ const router = createBrowserRouter([
         ),
       },
 
-      /* -------- Org Chart & Policies (Auth-only for ALL personas) -------- */
+      /* -------- Org Chart & Policies -------- */
       {
         path: "orgchart",
         element: (
@@ -686,7 +758,27 @@ const router = createBrowserRouter([
         ),
       },
 
-      /* -------- ✅ User Creation (HR/Admin/SuperAdmin + Customer + Approver) -------- */
+      /* -------- ✅ Admin Vouchers -------- */
+      {
+        path: "admin/vouchers",
+        element: (
+          <Protected roles={["Admin", "SuperAdmin", "HR"]}>
+            <AdminVouchers />
+          </Protected>
+        ),
+      },
+
+      /* -------- ✅ Admin Proposals -------- */
+      {
+        path: "admin/proposals/by-request",
+        element: (
+          <Protected roles={["Admin", "SuperAdmin", "HR"]}>
+            <AdminProposalByRequest />
+          </Protected>
+        ),
+      },
+
+      /* -------- ✅ User Creation -------- */
       {
         path: "admin/users",
         element: (

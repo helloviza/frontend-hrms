@@ -340,7 +340,7 @@ export default function LeaveApply() {
   async function loadLeaves() {
     try {
       setLoading(true);
-      const resp = (await api.get("/leave/my")) as { items?: LeaveRow[] } | LeaveRow[];
+      const resp = (await api.get("/leaves/my")) as { items?: LeaveRow[] } | LeaveRow[];
       const items = Array.isArray(resp)
         ? resp
         : Array.isArray((resp as any).items)
@@ -471,7 +471,7 @@ export default function LeaveApply() {
         payload.attachmentName = attachment.name;
       }
 
-      await api.post("/leave/apply", payload);
+      await api.post("/leaves/apply", payload);
       alert("Leave applied successfully!");
       setReason("");
       setAttachment(null);

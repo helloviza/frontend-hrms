@@ -334,7 +334,7 @@ export default function MyLeaves() {
   async function loadLeaves() {
     try {
       setLoading(true);
-      const resp = (await api.get("/leave/my")) as
+      const resp = (await api.get("/leaves/my")) as
         | { items?: LeaveItem[] }
         | LeaveItem[];
       const items = Array.isArray(resp)

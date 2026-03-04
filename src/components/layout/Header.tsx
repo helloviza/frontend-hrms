@@ -561,142 +561,99 @@ export default function Header() {
   const showUserCreation = canAccessUserCreation(user as any);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/80 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3">
-        <button type="button" onClick={() => navigate("/")} className="flex items-center gap-3">
-          <div className="relative flex items-center gap-3">
-            <div className="relative h-9 w-9 rounded-2xl bg-white shadow-sm shadow-black/10">
-              <img src={logoSrc} alt="Plumtrips HRMS" className="h-full w-full rounded-2xl object-contain" />
-            </div>
-            <div className="flex flex-col leading-tight">
-              <span className="text-[15px] font-semibold tracking-tight">
-                Plumtrips <span className="text-zinc-500">HRMS</span>
-              </span>
-              <span className="text-[10px] tracking-[0.18em] text-zinc-500 uppercase">
-                AI-ASSISTED WORKFORCE CONSOLE
-              </span>
-            </div>
-          </div>
-        </button>
+ <header className="sticky top-0 z-[100] px-4 py-4 font-mono">
+  <div className="mx-auto max-w-7xl relative">
+    
+    {/* 1. BACKGROUND CHASSIS */}
+    <div className="absolute inset-0 bg-[#233D4D]/95 backdrop-blur-3xl rounded-[2.5rem] border border-white/20 shadow-[0_25px_80px_rgba(0,0,0,0.9)] overflow-visible">
+      <div className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-[scan_4s_linear_infinite]" />
+    </div>
 
-        <div className="flex flex-1 items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigate(copilotTarget)}
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold shadow-sm ${
-              canOpenCopilot
-                ? "border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100"
-                : "border-zinc-200 bg-zinc-50 text-zinc-800 hover:bg-zinc-100"
-            }`}
-            title={canOpenCopilot ? "Open HR Copilot" : "Open your dashboard"}
-          >
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-sky-400 to-emerald-400 text-[11px] text-white">
-              ⚡
-            </span>
-            <span>{canOpenCopilot ? "Ask HR Copilot" : "Open Dashboard"}</span>
-          </button>
-
-          {/* Quick Access: Travel Analytics (always visible) */}
-          <button
-            type="button"
-            onClick={() => navigate(TRAVEL_DASH)}
-            className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-zinc-900 shadow-sm hover:bg-zinc-50"
-            title="Open Travel Analytics"
-          >
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-[#00477f] to-[#d06549] text-[11px] text-white">
-              ⌁
-            </span>
-            <span>Travel Analytics</span>
-          </button>
-
-          {/* ✅ Quick Access: User Creation (HR/Admin/SuperAdmin + WorkspaceLeader + Approver) */}
-          {showUserCreation && (
-            <button
-              type="button"
-              onClick={() => navigate(ADMIN_USERS)}
-              className="hidden items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-zinc-900 shadow-sm hover:bg-zinc-50 md:inline-flex"
-              title="User Creation"
-            >
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-900 text-[11px] text-white">
-                +
-              </span>
-              <span>User Creation</span>
-            </button>
-          )}
-
-          <div className="relative hidden flex-1 items-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-50/80 pl-3 pr-4 text-xs text-zinc-600 shadow-inner sm:flex">
-            <span className="mr-2 text-[10px] text-zinc-400">⌕</span>
-            <input
-              type="text"
-              placeholder="Ask anything about leaves, attendance, policies or your team…"
-              className="h-8 flex-1 bg-transparent text-[11px] outline-none placeholder:text-zinc-400"
-            />
-            <button
-              type="button"
-              onClick={() => navigate("/dashboard/hr-admin")}
-              className="ml-2 text-[10px] font-medium text-zinc-500 hover:text-zinc-800 disabled:opacity-60"
-              disabled={!canOpenCopilot}
-              title={!canOpenCopilot ? "Available for staff HR/Admin only" : "Open Copilot"}
-            >
-              Open Copilot ↗
-            </button>
-          </div>
+    <div className="relative flex items-center justify-between px-10 py-5">
+      
+      {/* 2. LOGO HUB */}
+      <div className="flex items-center gap-6 cursor-pointer group" onClick={() => navigate("/")}>
+        <div className="relative h-14 w-14 overflow-hidden rounded-full bg-white p-2 shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+          <img src={logoSrc} alt="Orbit" className="h-full w-full object-contain" />
         </div>
-
-        <div className="flex items-center gap-2 text-xs">
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            {roleLabel}
-          </span>
-
-          {displayEmail && (
-            <span className="hidden rounded-full bg-zinc-50 px-3 py-1 text-[11px] text-zinc-700 sm:inline">
-              {displayEmail}
-            </span>
-          )}
-
-          <button
-            type="button"
-            onClick={logout}
-            className="rounded-full bg-zinc-900 px-3 py-1 text-[11px] font-semibold text-white hover:bg-zinc-800"
-          >
-            Logout
-          </button>
+        <div className="flex flex-col">
+          <h1 className="text-2xl font-black italic tracking-tighter text-white">
+            Plum<span className="text-blue-400 not-italic ml-1 proper">ORBIT 🪐</span>
+          </h1>
+          <span className="text-[10px] font-black tracking-[0.4em] text-white proper">Your workforce. One orbit.</span>
         </div>
       </div>
 
-      {/* Visible on Profile */}
-      {isProfileRoute && (
-        <ProfileInsightsStrip kind={kind} onOpenAnalytics={() => navigate(TRAVEL_DASH)} />
-      )}
+      {/* 3. CENTER NAVIGATION (The Fixed Logic) */}
+      <nav 
+        className="hidden lg:flex items-center gap-2 bg-black/40 p-1.5 rounded-full border border-white/10"
+        onMouseLeave={() => setOpenGroupId(null)}
+      >
+        {groups.map((group) => {
+          const isActive = openGroupId === group.id;
+          return (
+            <div key={group.id} className="relative">
+              {/* Trigger Button */}
+              <button
+                onMouseEnter={() => setOpenGroupId(group.id)}
+                className={`relative z-[101] px-6 py-2.5 text-[11px] font-black uppercase tracking-[0.2em] transition-all duration-300 rounded-full border ${
+                  isActive 
+                    ? "bg-blue-600 border-blue-400 text-white shadow-[0_0_25px_rgba(59,130,246,0.5)]" 
+                    : "border-transparent text-zinc-400 hover:text-white"
+                }`}
+              >
+                {group.label}
+              </button>
 
-      {/* Dropdown nav */}
-      <div className="mx-auto max-w-7xl px-4 pb-3">
-        <nav
-          className="relative flex items-center justify-center gap-4"
-          onMouseLeave={() => setOpenGroupId(null)}
+              {/* THE LIST CONTAINER: Includes the 'Bridge' */}
+              {isActive && (
+                <div 
+                  className="absolute left-1/2 -translate-x-1/2 w-[850px]"
+                  style={{ top: '100%', paddingTop: '20px' }} // This padding is the "Invisible Bridge"
+                  onMouseEnter={() => setOpenGroupId(group.id)}
+                >
+                  <div className="bg-[#070c1d] border border-white/20 backdrop-blur-3xl p-8 rounded-[3rem] shadow-[0_40px_100px_rgba(0,0,0,1)] relative z-[999] animate-in fade-in zoom-in-95 duration-200">
+                    {/* Interior Glow */}
+                    <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
+                    
+                    {/* Render Content */}
+                    <div className="relative z-[1000]">
+                       <GroupPanel 
+                        group={group} 
+                        user={user as any} 
+                        onClose={() => setOpenGroupId(null)} 
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </nav>
+
+      {/* 4. USER STATUS */}
+      <div className="flex items-center gap-6">
+        <div className="hidden xl:flex flex-col items-end pr-6 border-r border-white/10">
+          <span className="text-[10px] font-black text-blue-400 tracking-widest uppercase mb-0.5">{roleLabel}</span>
+          <span className="text-[11px] font-bold text-white/60 lowercase">{displayEmail}</span>
+        </div>
+        <button
+          onClick={logout}
+          className="px-6 py-2.5 rounded-xl border border-red-500/40 text-[10px] font-black uppercase tracking-[0.2em] text-red-500 hover:bg-red-600 hover:text-white transition-all"
         >
-          {groups.map((group) => {
-            const isActive = openGroupId === group.id;
-            return (
-              <div key={group.id} className="relative">
-                <GroupTrigger
-                  group={group}
-                  isActive={isActive}
-                  onOpen={() => setOpenGroupId(group.id)}
-                />
-                {isActive && (
-                  <GroupPanel
-                    group={group}
-                    user={user as any}
-                    onClose={() => setOpenGroupId(null)}
-                  />
-                )}
-              </div>
-            );
-          })}
-        </nav>
+          TERMINATE
+        </button>
       </div>
-    </header>
+    </div>
+  </div>
+
+  <style dangerouslySetInnerHTML={{ __html: `
+    @keyframes scan {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+  `}} />
+</header>
   );
 }

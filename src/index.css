@@ -82,3 +82,33 @@ body {
   animation: shimmer 2.5s linear infinite;
   @apply rounded-xl;
 }
+/* ... keep all your existing code (root, body, components, etc.) ... */
+
+/* Fancy skeleton shimmer */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,.6) 40%,
+    rgba(255,255,255,0) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2.5s linear infinite;
+  @apply rounded-xl;
+}
+
+/* Add this utility section to fix the scrollbar and the TS error */
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

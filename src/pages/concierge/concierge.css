@@ -1,0 +1,136 @@
+/* apps/frontend/src/pages/concierge/concierge.css */
+
+.concierge-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(circle at top, #0b1d2d, #020814);
+  color: #eaeaea;
+}
+
+.concierge-header {
+  padding: 24px 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(to right, #0b3a66, #06213d);
+}
+
+.concierge-title h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.concierge-title p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.concierge-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  background: #3ddc97;
+  border-radius: 50%;
+}
+
+.concierge-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+}
+
+.concierge-sidebar {
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(10px);
+}
+
+.concierge-sidebar h3 {
+  margin-top: 0;
+}
+
+.concierge-sidebar ul {
+  list-style: none;
+  padding: 0;
+}
+
+.concierge-sidebar li {
+  margin: 10px 0;
+  opacity: 0.85;
+}
+
+.rm-handoff {
+  margin-top: 32px;
+  padding: 16px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 12px;
+}
+
+.rm-handoff button {
+  margin-top: 12px;
+  width: 100%;
+}
+
+.concierge-canvas {
+  padding: 32px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 24px;
+}
+
+.ai-card {
+  padding: 20px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(14px);
+}
+
+.ai-card h4 {
+  margin-top: 0;
+}
+
+.concierge-prompt {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  background: rgba(0,0,0,0.6);
+}
+
+.prompt-chips {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.prompt-chips button {
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: rgba(255,255,255,0.1);
+  color: white;
+  border: none;
+}
+
+.prompt-input {
+  display: flex;
+  gap: 12px;
+}
+
+.prompt-input input {
+  flex: 1;
+  padding: 14px;
+  border-radius: 12px;
+  border: none;
+}
+
+.send-btn {
+  width: 48px;
+  border-radius: 50%;
+}

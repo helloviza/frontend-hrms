@@ -39,7 +39,8 @@ export type ApprovalRequest = {
 
   // workflow
   status: "pending" | "approved" | "declined" | "on_hold";
-  adminState?: "pending" | "assigned" | "done" | "on_hold" | "cancelled";
+  adminState?: "pending" | "assigned" | "in_progress" | "done" | "on_hold" | "cancelled";
+
 
   // actors
   frontlinerId: string;
@@ -224,6 +225,18 @@ export async function adminPutOnHold(
     body || {}
   );
 }
+
+export async function adminUnderProcess(
+  reqId: string,
+  body?: { comment?: string }
+) {
+  return api.put<{ request: ApprovalRequest; message?: string }>(
+    `/approvals/admin/${encodeURIComponent(reqId)}/under-process`,
+    body || {}
+  );
+}
+
+
 
 export async function adminCancelApproval(
   reqId: string,

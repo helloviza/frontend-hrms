@@ -17,7 +17,6 @@ const COPILOT_MASCOT_SRC = "/assets/hr-copilot-mascot.png";
 const BACKEND_ORIGIN =
   import.meta.env.VITE_BACKEND_ORIGIN || "http://localhost:8080";
 
-
 /* ---------- types ---------- */
 
 type ProfileData = {
@@ -28,6 +27,9 @@ type ProfileData = {
   managerName?: string;
   department?: string;
   location?: string;
+
+  // ✅ AWS avatar: source-of-truth key + (optional) display URL (signed)
+  avatarKey?: string;
   avatarUrl?: string;
 
   // extended profile fields for richer tabs
@@ -99,7 +101,7 @@ function computeProfileScore(p: ProfileData): number {
     [!!p.location, 10],
     [!!p.managerName, 10],
     [Array.isArray(p.roles) && p.roles.length > 0, 12],
-    [!!p.avatarUrl, 20],
+    [!!p.avatarKey || !!p.avatarUrl, 20],
   ];
   for (const [ok, pts] of checks) if (ok) score += pts;
   return Math.max(10, Math.min(100, score || 10));
@@ -131,6 +133,7 @@ function isNonEmpty(value: any): boolean {
 
 /**
  * Load cached profile, but ONLY if it belongs to the same user (by email).
+ * ✅ Never restore avatarUrl from cache (signed URLs expire).
  */
 function loadCachedProfile(ownerEmail?: string): Partial<ProfileData> {
   if (typeof window === "undefined") return {};
@@ -142,11 +145,10 @@ function loadCachedProfile(ownerEmail?: string): Partial<ProfileData> {
 
     const cacheOwner = (parsed as any).__ownerEmail as string | undefined;
     if (ownerEmail && cacheOwner && cacheOwner !== ownerEmail) {
-      // Cache belongs to a different logged-in user → ignore
       return {};
     }
 
-    const { __ownerEmail, ...rest } = parsed as any;
+    const { __ownerEmail, avatarUrl, ...rest } = parsed as any;
     return rest as Partial<ProfileData>;
   } catch {
     return {};
@@ -155,12 +157,15 @@ function loadCachedProfile(ownerEmail?: string): Partial<ProfileData> {
 
 /**
  * Save profile into cache, tagged with the owner email so logins do not mix.
+ * ✅ Do not cache avatarUrl (signed URLs expire).
  */
 function saveCachedProfile(p: ProfileData, ownerEmail?: string) {
   if (typeof window === "undefined") return;
   try {
+    const { avatarUrl, ...rest } = p;
+
     const toStore: any = {
-      ...p,
+      ...rest,
       __ownerEmail: ownerEmail || p.email || null,
     };
     localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(toStore));
@@ -175,20 +180,23 @@ function saveCachedProfile(p: ProfileData, ownerEmail?: string) {
  *  - fromServer: backend /users/profile
  *  - fromCache: localStorage (cosmetic only)
  *
- * IMPORTANT: cache is NOT allowed to override roles.
+ * IMPORTANT:
+ *  - cache is NOT allowed to override roles
+ *  - avatarKey/avatarUrl are server-owned identity and should not be overridden by cache
  */
 function mergeProfile(
   base: ProfileData,
   fromServer?: Partial<ProfileData> | null,
-  fromCache?: Partial<ProfileData> | null
+  fromCache?: Partial<ProfileData> | null,
 ): ProfileData {
   const merged: ProfileData = { ...base };
 
   const apply = (
     src?: Partial<ProfileData> | null,
-    opts: { allowRoles?: boolean } = {}
+    opts: { allowRoles?: boolean; allowAvatar?: boolean } = {},
   ) => {
     if (!src || typeof src !== "object") return;
+
     const keys: (keyof ProfileData)[] = [
       "name",
       "email",
@@ -197,7 +205,8 @@ function mergeProfile(
       "managerName",
       "department",
       "location",
-      //avatarUrl,
+      "avatarKey",
+      "avatarUrl",
       "skills",
       "tools",
       "totalExperienceYears",
@@ -205,40 +214,30 @@ function mergeProfile(
       "squad",
       "documents",
     ];
+
     for (const key of keys) {
       if (key === "roles" && !opts.allowRoles) continue;
-      const value = src[key];
+      if ((key === "avatarKey" || key === "avatarUrl") && !opts.allowAvatar)
+        continue;
+
+      const value = (src as any)[key];
       if (isNonEmpty(value)) {
         (merged as any)[key] = value as any;
       }
     }
   };
 
-  // Backend can set roles; base has roles from logged-in token
-  apply(fromServer || undefined, { allowRoles: true });
+  // Backend can set roles + avatar
+  apply(fromServer || undefined, { allowRoles: true, allowAvatar: true });
 
-  // Cache is purely cosmetic and MUST NOT affect roles
-  apply(fromCache || undefined, { allowRoles: false });
+  // Cache is purely cosmetic and MUST NOT affect roles or avatar identity
+  apply(fromCache || undefined, { allowRoles: false, allowAvatar: false });
 
-  // 🔒 Avatar is server-owned identity — never overridden by cache
-if (fromServer?.avatarUrl) {
-  merged.avatarUrl = fromServer.avatarUrl;
-}
-
+  // 🔒 Enforce avatar from server if present
+  if (fromServer?.avatarKey) merged.avatarKey = fromServer.avatarKey;
+  if (fromServer?.avatarUrl) merged.avatarUrl = fromServer.avatarUrl;
 
   return merged;
-}
-
-function getAccessToken(): string {
-  if (typeof window === "undefined") return "";
-  return (
-    localStorage.getItem("accessToken") ||
-    localStorage.getItem("hrms_access_token") ||
-    localStorage.getItem("hrms:accessToken") ||
-    localStorage.getItem("jwt") ||
-    localStorage.getItem("token") ||
-    ""
-  );
 }
 
 function toStr(v: any, fallback: string): string {
@@ -252,16 +251,9 @@ function toStr(v: any, fallback: string): string {
  * Normalise whatever the backend returns for /stats/dashboard
  * into our DashboardStats shape so tiles + AI Copilot see the
  * correct numbers.
- *
- * Supports:
- *  - Axios-style { data: { ... } }
- *  - Flat { attendancePercent, leavesTaken, ... }
- *  - Nested { stats: { ... }, attendance: [...], leaveMix: [...] }
  */
 function normalizeDashboardStats(raw: any): DashboardStats {
-  // 1) Unwrap Axios-style response if present
-  const src =
-    raw && typeof raw === "object" ? (raw as any).data ?? raw : null;
+  const src = raw && typeof raw === "object" ? (raw as any).data ?? raw : null;
 
   if (!src || typeof src !== "object") {
     return {
@@ -274,7 +266,6 @@ function normalizeDashboardStats(raw: any): DashboardStats {
     };
   }
 
-  // 2) Some backends send { stats: { ... }, attendance: [...], leaveMix: [...] }
   const base =
     (src as any).stats && typeof (src as any).stats === "object"
       ? (src as any).stats
@@ -287,7 +278,7 @@ function normalizeDashboardStats(raw: any): DashboardStats {
         base.attendanceRate ??
         base.attendancePercentThisMonth ??
         base.attendancePercentage,
-      "—"
+      "—",
     ) || "—";
 
   const leavesTaken =
@@ -297,7 +288,7 @@ function normalizeDashboardStats(raw: any): DashboardStats {
         base.leavesCount ??
         base.totalLeavesTaken ??
         base.usedLeaves,
-      "0"
+      "0",
     ) || "0";
 
   const pendingApprovals =
@@ -306,7 +297,7 @@ function normalizeDashboardStats(raw: any): DashboardStats {
         base.pendingLeaves ??
         base.pendingLeaveCount ??
         base.pendingRequests,
-      "0"
+      "0",
     ) || "0";
 
   const docsUploaded =
@@ -315,10 +306,9 @@ function normalizeDashboardStats(raw: any): DashboardStats {
         base.documentsUploaded ??
         base.documentCount ??
         base.docsCount,
-      "0"
+      "0",
     ) || "0";
 
-  // 3) Time-series / charts – use src first, then base
   const attendanceSeries: AttendancePoint[] =
     ((src as any).attendance ||
       (src as any).attendanceSeries ||
@@ -341,6 +331,26 @@ function normalizeDashboardStats(raw: any): DashboardStats {
     attendance: attendanceSeries || [],
     leaveMix: leaveMix || [],
   };
+}
+
+/**
+ * ✅ Fetch a fresh signed URL for displaying avatarKey.
+ * Backend must implement: POST /uploads/presign-avatar-download -> { url }
+ */
+async function presignAvatarDownload(key: string): Promise<string> {
+  try {
+    const resp: any = await api.post("/uploads/presign-avatar-download", { key });
+
+    // handle both axios-style and plain object
+    const data =
+      resp && typeof resp === "object" ? (resp as any).data ?? resp : resp;
+
+    const url = data?.url || "";
+
+    return typeof url === "string" ? url : "";
+  } catch (e) {
+    return "";
+  }
 }
 
 /* ---------- component ---------- */
@@ -368,6 +378,15 @@ export default function MyProfile() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [avatarSaving, setAvatarSaving] = useState(false);
+
+  /**
+   * Avatar display strategy:
+   * - avatarKey is the source of truth
+   * - freshAvatarUrl is UI-only (presigned URL or local logo)
+   * - avatarMode prevents presign from overwriting "logo" view
+   */
+  const [avatarMode, setAvatarMode] = useState<"key" | "logo">("key");
+  const [freshAvatarUrl, setFreshAvatarUrl] = useState<string>("");
 
   // HR assistant state
   const [assistantQuestion, setAssistantQuestion] = useState("");
@@ -399,6 +418,9 @@ export default function MyProfile() {
 
   // chat container: scroll only inside the chat, not the whole page
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // ✅ race-proof presign tracking
+  const lastPresignedKeyRef = useRef<string>("");
 
   // track when profile has finished initial load (server/cache)
   const [profileLoaded, setProfileLoaded] = useState(false);
@@ -440,8 +462,7 @@ export default function MyProfile() {
 
     const rolesArray = Array.isArray(user.roles) ? user.roles : [];
     const upperRoles = rolesArray.map((r: any) => String(r).toUpperCase());
-    const isHrOrAdmin =
-      upperRoles.includes("HR") || upperRoles.includes("ADMIN");
+    const isHrOrAdmin = upperRoles.includes("HR") || upperRoles.includes("ADMIN");
 
     if (!isHrOrAdmin && String(paramId) !== String(userId)) {
       const path = location.pathname || "";
@@ -472,6 +493,54 @@ export default function MyProfile() {
     return () => clearTimeout(id);
   }, [toast]);
 
+  // ✅ whenever avatarKey changes (and we are in "key" mode), fetch a fresh signed URL
+  useEffect(() => {
+    if (avatarMode !== "key") return;
+
+    const directUrl = profile.avatarUrl || "";
+    if (directUrl) {
+      // show immediately if server sent a usable URL
+      setFreshAvatarUrl(directUrl);
+      return;
+    }
+
+    const key = profile.avatarKey || "";
+    if (!key) {
+      setFreshAvatarUrl("");
+      return;
+    }
+
+    // ✅ race-proof: mark this key as the latest request
+    lastPresignedKeyRef.current = key;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        const url = await presignAvatarDownload(key);
+
+        if (!alive) return;
+        if (lastPresignedKeyRef.current !== key) return;
+
+        if (!url) {
+          setFreshAvatarUrl("");
+          return;
+        }
+
+        const sep = url.includes("?") ? "&" : "?";
+        setFreshAvatarUrl(`${url}${sep}v=${Date.now()}`);
+      } catch {
+        if (!alive) return;
+        if (lastPresignedKeyRef.current !== key) return;
+        setFreshAvatarUrl("");
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [profile.avatarKey, profile.avatarUrl, avatarMode]);
+
   /* load profile + stats + logs */
   useEffect(() => {
     (async () => {
@@ -480,7 +549,9 @@ export default function MyProfile() {
       try {
         // 1) get from backend (best-effort)
         try {
-          const p = await api.get("/users/profile");
+          const raw = await api.get("/users/profile");
+          const p =
+            raw && typeof raw === "object" ? (raw as any).data ?? raw : raw;
           if (p && typeof p === "object") {
             serverProfile = p as Partial<ProfileData>;
           }
@@ -499,7 +570,7 @@ export default function MyProfile() {
             roles: user?.roles || [],
           },
           serverProfile,
-          cachedProfile
+          cachedProfile,
         );
 
         setProfile(merged);
@@ -507,8 +578,8 @@ export default function MyProfile() {
 
         // 4) stats (normalised)
         try {
-          const raw = await api.get("/stats/dashboard");
-          const dash = normalizeDashboardStats(raw);
+          const rawStats = await api.get("/stats/dashboard");
+          const dash = normalizeDashboardStats(rawStats);
           setStats(dash);
           setAttendance(dash.attendance || []);
           setLeaveSlices(dash.leaveMix || []);
@@ -528,7 +599,11 @@ export default function MyProfile() {
 
         // 5) logs
         try {
-          const rec = await api.get("/logs/recent");
+          const rawLogs = await api.get("/logs/recent");
+          const rec =
+            rawLogs && typeof rawLogs === "object"
+              ? (rawLogs as any).data ?? rawLogs
+              : rawLogs;
           if (Array.isArray(rec)) setLogs(rec);
         } catch (err) {
           console.warn("Logs fetch failed", err);
@@ -545,8 +620,7 @@ export default function MyProfile() {
     if (!profileLoaded) return;
 
     const greetingName =
-      (firstName && firstName.toLowerCase() !== "you" ? firstName : "") ||
-      "Dear";
+      (firstName && firstName.toLowerCase() !== "you" ? firstName : "") || "Dear";
 
     assistantInitRef.current = true;
     setAssistantMessages([
@@ -560,35 +634,35 @@ export default function MyProfile() {
   }, [profileLoaded, firstName]);
 
   const roleBadge = useMemo(() => {
-    const source =
-      user?.roles && user.roles.length ? user.roles : profile.roles;
+    const source = user?.roles && user.roles.length ? user.roles : profile.roles;
     return source && source.length ? source[0] : "Employee";
   }, [user?.roles, profile.roles]);
 
   const profileScore = useMemo(() => computeProfileScore(profile), [profile]);
-  const profileScoreLabel = useMemo(
-    () => scoreLabel(profileScore),
-    [profileScore]
-  );
-  const profileScoreTone = useMemo(
-    () => scoreTone(profileScore),
-    [profileScore]
-  );
+  const profileScoreLabel = useMemo(() => scoreLabel(profileScore), [profileScore]);
+  const profileScoreTone = useMemo(() => scoreTone(profileScore), [profileScore]);
 
+  /**
+   * ✅ Avatar URL resolution:
+   * - If avatarMode === "logo": show local logo
+   * - Else prefer freshAvatarUrl (presigned)
+   * - Else fallback to legacy profile.avatarUrl (if backend still sends /uploads/...)
+   */
   const resolvedAvatarUrl = useMemo(() => {
-  const url = profile.avatarUrl;
-  if (!url) return "";
+    if (avatarMode === "logo") return "/assets/logo.png";
 
-  // absolute URL or base64
-  if (/^https?:\/\//.test(url) || url.startsWith("data:")) return url;
+    const url = freshAvatarUrl || profile.avatarUrl || "";
+    if (!url) return "";
 
-  // frontend assets
-  if (url.startsWith("/assets/")) return url;
+    // absolute URL or base64
+    if (/^https?:\/\//.test(url) || url.startsWith("data:")) return url;
 
-  // backend-served uploads
-  return `${BACKEND_ORIGIN}${url.startsWith("/") ? url : `/${url}`}`;
-}, [profile.avatarUrl]);
+    // frontend assets
+    if (url.startsWith("/assets/")) return url;
 
+    // backend-served uploads (legacy)
+    return `${BACKEND_ORIGIN}${url.startsWith("/") ? url : `/${url}`}`;
+  }, [avatarMode, freshAvatarUrl, profile.avatarUrl]);
 
   const aiInsights: AiInsight[] = useMemo(() => {
     const items: AiInsight[] = [];
@@ -693,7 +767,7 @@ export default function MyProfile() {
         icon: string;
         badge?: string | number;
       }[],
-    [profileScore, profile.skills, stats?.attendancePercent, stats?.docsUploaded]
+    [profileScore, profile.skills, stats?.attendancePercent, stats?.docsUploaded],
   );
 
   /* edit profile */
@@ -705,7 +779,10 @@ export default function MyProfile() {
       let serverUpdated: Partial<ProfileData> | null = null;
 
       try {
-        const resp = await api.post("/users/profile/update", form);
+        const raw = await api.post("/users/profile/update", form);
+        const resp =
+          raw && typeof raw === "object" ? (raw as any).data ?? raw : raw;
+
         if (resp && typeof resp === "object") {
           serverUpdated = resp as Partial<ProfileData>;
         }
@@ -717,8 +794,9 @@ export default function MyProfile() {
       setProfile(merged);
       saveCachedProfile(merged, user?.email || undefined);
       setShowEdit(false);
+      setToast({ message: "Profile updated.", type: "success" });
     } catch {
-      alert("Failed to update profile");
+      setToast({ message: "Failed to update profile", type: "error" });
     } finally {
       setSaving(false);
     }
@@ -741,10 +819,10 @@ export default function MyProfile() {
 
         await api.postForm<any>("/docs/upload", formData);
 
-        alert("Document uploaded successfully");
+        setToast({ message: "Document uploaded successfully", type: "success" });
       } catch (err) {
         console.error(err);
-        alert("Upload failed");
+        setToast({ message: "Upload failed", type: "error" });
       } finally {
         setUploading(false);
       }
@@ -753,83 +831,112 @@ export default function MyProfile() {
     fileInput.click();
   };
 
-    /* upload / change avatar image */
+  /**
+   * ✅ AWS-only avatar upload (NO local server storage)
+   * Flow:
+   * 1) POST /uploads/presign-avatar-upload -> { key, uploadUrl }
+   * 2) PUT file to uploadUrl (S3)
+   * 3) POST /users/profile/avatar/confirm -> { avatarKey }
+   */
   const handleAvatarUpload = async () => {
     const fileInput = document.createElement("input");
     fileInput.type = "file";
-    fileInput.accept = "image/*";
+    fileInput.accept = "image/png,image/jpeg,image/webp";
 
     fileInput.onchange = async (e: any) => {
-      const file = e.target.files?.[0];
+      const file = e.target.files?.[0] as File | undefined;
       if (!file) return;
+
+      const maxBytes = 5 * 1024 * 1024; // 5 MB
+      const allowed = ["image/png", "image/jpeg", "image/webp"];
+      if (!allowed.includes(file.type)) {
+        setToast({
+          message: "Only PNG/JPEG/WEBP images are allowed.",
+          type: "error",
+        });
+        return;
+      }
+      if (file.size > maxBytes) {
+        setToast({
+          message: "Image is too large. Please upload under 5 MB.",
+          type: "error",
+        });
+        return;
+      }
 
       setAvatarSaving(true);
       try {
-        const formData = new FormData();
-        formData.append("avatar", file);
+        // 1) presign
+        const rawPresign: any = await api.post("/uploads/presign-avatar-upload", {
+          fileName: file.name,
+          contentType: file.type,
+        });
+        const presignResp =
+          rawPresign && typeof rawPresign === "object"
+            ? rawPresign.data ?? rawPresign
+            : rawPresign;
 
-        // ✅ Use unified api.postForm so it:
-        //  - attaches the in-memory Bearer token
-        //  - handles /auth/refresh + retry
-        const data = await api.postForm<any>(
-          "/users/profile/avatar",
-          formData,
-        );
+        const key: string = presignResp?.key || "";
+        const uploadUrl: string = presignResp?.uploadUrl || "";
 
-        const urlFromServer: string =
-  data?.avatarUrl || data?.url || data?.path || "";
-
-const finalUrl = (() => {
-  if (!urlFromServer) return profile.avatarUrl || "";
-
-  // already absolute or base64
-  if (/^https?:\/\//.test(urlFromServer) || urlFromServer.startsWith("data:")) {
-    return urlFromServer;
-  }
-
-  // static assets
-  if (urlFromServer.startsWith("/assets/")) {
-    return urlFromServer;
-  }
-
-  // backend base (strip /api)
-  const base = new URL(api.BASE).origin;
-
-
-if (urlFromServer.startsWith("/")) {
-  return `${BACKEND_ORIGIN}${urlFromServer}`;
-}
-
-return `${BACKEND_ORIGIN}/${urlFromServer}`;
-})();
-
-
-        if (!finalUrl) {
-          alert("Avatar uploaded, but server did not return a usable URL.");
-        } else {
-          // 🔐 Persist avatarUrl into the profile record
-          // so /users/profile returns it on ANY device / browser.
-          try {
-            await api.post("/users/profile/update", {
-              avatarUrl: finalUrl,
-            });
-          } catch (err) {
-            console.warn(
-              "[HRMS] Failed to persist avatarUrl on profile, using local value only",
-              err,
-            );
-          }
+        if (!key || !uploadUrl) {
+          throw new Error("Presign response missing key/uploadUrl");
         }
 
+        // 2) upload to S3
+        const putRes = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type,
+          },
+          body: file,
+        });
+
+        if (!putRes.ok) {
+          const text = await putRes.text().catch(() => "");
+          console.error("[AVATAR PUT] failed:", putRes.status, text);
+          throw new Error("Upload to storage failed");
+        }
+
+        // 3) confirm + save avatarKey
+        const rawConfirm: any = await api.post("/users/profile/avatar/confirm", {
+          key,
+        });
+        const confirmResp =
+          rawConfirm && typeof rawConfirm === "object"
+            ? rawConfirm.data ?? rawConfirm
+            : rawConfirm;
+
+        const avatarKey: string = confirmResp?.avatarKey || key;
+
+        setToast({ message: "Profile photo updated.", type: "success" });
+
+        // Ensure we are back to key mode (so presign effect runs and wins)
+        setAvatarMode("key");
+
+        // Keep profile storing key as source-of-truth; do NOT keep signed URL in profile.
         const merged: ProfileData = {
           ...profile,
-          avatarUrl: finalUrl,
+          avatarKey,
+          // keep avatarUrl if backend sent one; otherwise keep old until presign works
+          avatarUrl: confirmResp?.avatarUrl || profile.avatarUrl || "",
         };
+
         setProfile(merged);
         saveCachedProfile(merged, user?.email || undefined);
+
+        // Optional: if backend returns a signed URL here, we can show instantly.
+        const maybeUrl: string = confirmResp?.avatarUrl || "";
+        if (maybeUrl && typeof maybeUrl === "string") {
+          const sep = maybeUrl.includes("?") ? "&" : "?";
+          setFreshAvatarUrl(`${maybeUrl}${sep}v=${Date.now()}`);
+        } else {
+          // Let presign effect fetch fresh URL
+          setFreshAvatarUrl("");
+        }
       } catch (err) {
         console.error(err);
-        alert("Failed to upload profile photo");
+        setToast({ message: "Failed to upload profile photo", type: "error" });
       } finally {
         setAvatarSaving(false);
       }
@@ -838,31 +945,19 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
     fileInput.click();
   };
 
-
+  /**
+   * ✅ "Use company logo" is UI-only (session only; do not persist)
+   * And it must not be overwritten by presign while user is in logo mode.
+   */
   const handleUseCompanyLogo = async () => {
-    const logoUrl = "/assets/logo.png";
     setAvatarSaving(true);
     try {
-      const updated = await api.post("/users/profile/update", {
-        avatarUrl: logoUrl,
-      });
-      const finalUrl =
-        (updated && (updated as any).avatarUrl) || logoUrl || profile.avatarUrl;
-
-      const merged = {
-        ...profile,
-        avatarUrl: finalUrl,
-      };
-      setProfile(merged);
-      saveCachedProfile(merged, user?.email || undefined);
+      setAvatarMode("logo");
+      setFreshAvatarUrl(""); // keep state clean
+      setToast({ message: "Logo applied (local view).", type: "success" });
     } catch (err) {
       console.error(err);
-      const merged = {
-        ...profile,
-        avatarUrl: logoUrl,
-      };
-      setProfile(merged);
-      saveCachedProfile(merged, user?.email || undefined);
+      setToast({ message: "Failed to apply logo.", type: "error" });
     } finally {
       setAvatarSaving(false);
     }
@@ -903,7 +998,10 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
         },
       });
 
-      console.log("[HR ASSISTANT] raw response:", resp);
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.log("[HR ASSISTANT] raw response:", resp);
+      }
 
       const data: any =
         resp && typeof resp === "object" && "answer" in (resp as any)
@@ -916,10 +1014,10 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
         (typeof data.answer === "string" && data.answer.trim().length > 0
           ? data.answer
           : typeof data.message === "string" && data.message.trim().length > 0
-          ? data.message
-          : typeof data === "string"
-          ? data
-          : "I’m not able to answer that right now.") ||
+            ? data.message
+            : typeof data === "string"
+              ? data
+              : "I’m not able to answer that right now.") ||
         "I’m not able to answer that right now.";
 
       const botMessage: ChatMessage = {
@@ -1028,14 +1126,11 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
         payload.newPassword = resetNewPassword.trim();
       }
 
-      const resp: any = await api.post(
-        "/auth/admin/reset-password",
-        payload
-      );
-      const temp =
-        resp?.tempPassword ||
-        resp?.data?.tempPassword ||
-        "(password set, but not returned)";
+      const resp: any = await api.post("/auth/admin/reset-password", payload);
+      const data =
+        resp && typeof resp === "object" ? (resp as any).data ?? resp : resp;
+
+      const temp = data?.tempPassword || "(password set, but not returned)";
 
       const resultText = `Password reset successfully. Temporary password: ${temp}`;
       setResetResult(resultText);
@@ -1043,7 +1138,6 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
         message: "Password reset successfully for the selected user.",
         type: "success",
       });
-      // DO NOT auto-clear email; HR may want to copy it
       setResetNewPassword("");
     } catch (err: any) {
       console.error("admin reset password error", err);
@@ -1376,7 +1470,7 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
 
                   <div
                     className={`rounded-2xl border px-3 py-3 ${toneClass(
-                      profileScoreTone
+                      profileScoreTone,
                     )} text-xs`}
                   >
                     <p className="font-semibold mb-1">Next recommended step</p>
@@ -1440,9 +1534,7 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
                       </p>
                     </div>
                     <div className="rounded-2xl bg-black/40 border border-slate-700 px-3 py-2.5">
-                      <p className="text-[11px] text-slate-400 mb-1">
-                        Location
-                      </p>
+                      <p className="text-[11px] text-slate-400 mb-1">Location</p>
                       <p className="font-medium text-slate-100">
                         {profile.location || "Not set"}
                       </p>
@@ -1501,9 +1593,7 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
                     </div>
                   </div>
                   <div className="rounded-2xl bg-slate-950/60 border border-slate-800 px-3 py-3">
-                    <p className="text-[11px] text-slate-400 mb-2">
-                      Leave mix
-                    </p>
+                    <p className="text-[11px] text-slate-400 mb-2">Leave mix</p>
                     <div className="h-24 flex items-center justify-center">
                       <LeavePie data={leaveSlices} />
                     </div>
@@ -1654,9 +1744,7 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
                           type="password"
                           className="w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-xs outline-none focus:border-cyan-400"
                           value={currentPassword}
-                          onChange={(e) =>
-                            setCurrentPassword(e.target.value)
-                          }
+                          onChange={(e) => setCurrentPassword(e.target.value)}
                         />
                       </div>
 
@@ -1680,9 +1768,7 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
                           type="password"
                           className="w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-xs outline-none focus:border-cyan-400"
                           value={confirmNewPassword}
-                          onChange={(e) =>
-                            setConfirmNewPassword(e.target.value)
-                          }
+                          onChange={(e) => setConfirmNewPassword(e.target.value)}
                         />
                       </div>
 
@@ -1745,9 +1831,7 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
                               type="email"
                               className="w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-xs outline-none focus:border-violet-400"
                               value={resetEmail}
-                              onChange={(e) =>
-                                setResetEmail(e.target.value)
-                              }
+                              onChange={(e) => setResetEmail(e.target.value)}
                               placeholder="user@company.com"
                             />
                           </div>
@@ -1841,7 +1925,7 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
                   <div
                     key={idx}
                     className={`rounded-2xl border px-3 py-3 ${toneClass(
-                      ins.tone
+                      ins.tone,
                     )}`}
                   >
                     <p className="font-semibold mb-1">{ins.title}</p>
@@ -1859,9 +1943,7 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-400">
                   Activity
                 </p>
-                <p className="text-sm text-slate-100 mt-1">
-                  Recent HR events
-                </p>
+                <p className="text-sm text-slate-100 mt-1">Recent HR events</p>
               </div>
             </div>
             <ul className="text-xs text-slate-200 space-y-2 max-h-56 overflow-auto pr-1">
@@ -1903,9 +1985,7 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
                   </p>
                   <p className="text-sm md:text-base text-slate-100 mt-1">
                     Hi{" "}
-                    <span className="font-semibold">
-                      {firstName || "there"}
-                    </span>
+                    <span className="font-semibold">{firstName || "there"}</span>
                     , how can we help today?
                   </p>
                 </div>
@@ -1995,7 +2075,7 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
                           </div>
                         </div>
                       </div>
-                    )
+                    ),
                   )}
 
                   {assistantLoading && (
@@ -2020,11 +2100,7 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
                     value={assistantQuestion}
                     onChange={(e) => setAssistantQuestion(e.target.value)}
                     onKeyDown={(e) => {
-                      if (
-                        e.key === "Enter" &&
-                        !e.shiftKey &&
-                        !assistantLoading
-                      ) {
+                      if (e.key === "Enter" && !e.shiftKey && !assistantLoading) {
                         e.preventDefault();
                         handleAskAssistant();
                       }
@@ -2170,9 +2246,7 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
               />
 
-              <label className="block text-xs text-slate-300 mb-1">
-                Phone
-              </label>
+              <label className="block text-xs text-slate-300 mb-1">Phone</label>
               <input
                 className="w-full mb-3 rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-xs outline-none focus:border-cyan-400"
                 value={form.phone || ""}
@@ -2196,9 +2270,7 @@ return `${BACKEND_ORIGIN}/${urlFromServer}`;
               <input
                 className="w-full mb-3 rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-xs outline-none focus:border-cyan-400"
                 value={form.location || ""}
-                onChange={(e) =>
-                  setForm({ ...form, location: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
               />
 
               <div className="flex justify-between items-center mt-2 mb-4">

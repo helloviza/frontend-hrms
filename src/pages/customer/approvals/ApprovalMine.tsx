@@ -12,9 +12,12 @@ import { useNavigate } from "react-router-dom";
 function badge(status: string) {
   const s = String(status || "").toLowerCase();
   const base = "px-2 py-1 rounded-full text-[10px] border";
-  if (s === "approved") return `${base} bg-green-50 text-green-700 border-green-100`;
-  if (s === "declined") return `${base} bg-red-50 text-red-700 border-red-100`;
-  if (s === "on_hold") return `${base} bg-amber-50 text-amber-800 border-amber-100`;
+  if (s === "approved")
+    return `${base} bg-green-50 text-green-700 border-green-100`;
+  if (s === "declined")
+    return `${base} bg-red-50 text-red-700 border-red-100`;
+  if (s === "on_hold")
+    return `${base} bg-amber-50 text-amber-800 border-amber-100`;
   return `${base} bg-zinc-50 text-zinc-700 border-zinc-200`;
 }
 
@@ -79,6 +82,20 @@ function getAiSignal(request: ApprovalRequest) {
   };
 }
 
+function prettyTripType(meta: any) {
+  const raw = String(meta?.tripType || meta?.trip_type || meta?.trip || "")
+    .trim()
+    .toLowerCase();
+
+  if (raw === "roundtrip" || raw === "round_trip" || raw === "round trip") return "Round Trip";
+  if (raw === "multicity" || raw === "multi_city" || raw === "multi city") return "Multi City";
+  if (raw === "oneway" || raw === "one_way" || raw === "one way") return "One Way";
+
+  // fallback heuristic
+  if (meta?.returnDate || meta?.return_date || meta?.endDate || meta?.return) return "Round Trip";
+  return "One Way";
+}
+
 /* ───────────────────────── details drawer ───────────────────────── */
 
 function MyRequestDetailsDrawer({
@@ -98,46 +115,26 @@ function MyRequestDetailsDrawer({
   const primary = cartItems[0] || {};
   const meta: any = primary.meta || {};
 
-  const tripType =
-    meta.tripType ||
-    meta.trip_type ||
-    meta.trip ||
-    (meta.returnDate || meta.return_date ? "Round Trip" : "One Way");
+  const tripType = prettyTripType(meta);
 
   const origin = meta.origin || meta.from || meta.source || meta.depAirportCode;
-  const destination =
-    meta.destination || meta.to || meta.target || meta.arrAirportCode;
+  const destination = meta.destination || meta.to || meta.target || meta.arrAirportCode;
 
-  const departDate =
-    meta.departDate || meta.depart_date || meta.startDate || meta.date;
-  const returnDate =
-    meta.returnDate || meta.return_date || meta.endDate || meta.return;
+  const departDate = meta.departDate || meta.depart_date || meta.startDate || meta.date;
+  const returnDate = meta.returnDate || meta.return_date || meta.endDate || meta.return;
 
-  const cabinClass =
-    meta.cabinClass || meta.cabin || meta.class || meta.travelClass;
+  const cabinClass = meta.cabinClass || meta.cabin || meta.class || meta.travelClass;
 
   const preferredTime =
-    meta.preferredTime ||
-    meta.preferred_time ||
-    meta.timePreference ||
-    meta.timeSlot;
+    meta.preferredTime || meta.preferred_time || meta.timePreference || meta.timeSlot;
 
   const preferredAirline =
-    meta.preferredAirline ||
-    meta.preferred_airline ||
-    meta.airline ||
-    meta.carrier;
+    meta.preferredAirline || meta.preferred_airline || meta.airline || meta.carrier;
 
-  const needBy =
-    meta.needBy || meta.need_by || meta.latestApprovalBy || meta.requiredBy;
+  const needBy = meta.needBy || meta.need_by || meta.latestApprovalBy || meta.requiredBy;
 
   const notes =
-    meta.note ||
-    meta.notes ||
-    meta.reason ||
-    meta.purpose ||
-    (request as any).comments ||
-    "";
+    meta.note || meta.notes || meta.reason || meta.purpose || (request as any).comments || "";
 
   const status = String((request as any).status || "").toUpperCase();
   const total = cartItems.reduce(
@@ -147,9 +144,7 @@ function MyRequestDetailsDrawer({
   const history = ((request as any).history || []) as any[];
 
   const createdAt =
-    (request as any).createdAt ||
-    (request as any).submittedAt ||
-    (request as any).created_at;
+    (request as any).createdAt || (request as any).submittedAt || (request as any).created_at;
   const updatedAt = (request as any).updatedAt;
 
   const createdAtStr = createdAt
@@ -185,9 +180,7 @@ function MyRequestDetailsDrawer({
                 <div className="rounded-full bg-zinc-900 px-3 py-1 text-xs font-semibold text-white">
                   {shortReqCode(request)}
                 </div>
-                <span className={badge((request as any).status)}>
-                  {status}
-                </span>
+                <span className={badge((request as any).status)}>{status}</span>
               </div>
               {(createdAtStr || updatedAtStr) && (
                 <div className="mt-1 text-[11px] text-zinc-500">
@@ -233,8 +226,7 @@ function MyRequestDetailsDrawer({
                   <div className="mt-1 text-sm font-semibold">
                     {origin && destination ? (
                       <>
-                        {origin} <span className="text-zinc-400">→</span>{" "}
-                        {destination}
+                        {origin} <span className="text-zinc-400">→</span> {destination}
                       </>
                     ) : (
                       primary.title || primary.type || "Travel request"
@@ -260,26 +252,17 @@ function MyRequestDetailsDrawer({
                 <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-zinc-800">
                   {departDate && (
                     <div className="rounded-full bg-zinc-100 px-3 py-1">
-                      Depart:{" "}
-                      <span className="font-medium">
-                        {String(departDate)}
-                      </span>
+                      Depart: <span className="font-medium">{String(departDate)}</span>
                     </div>
                   )}
                   {returnDate && (
                     <div className="rounded-full bg-zinc-100 px-3 py-1">
-                      Return:{" "}
-                      <span className="font-medium">
-                        {String(returnDate)}
-                      </span>
+                      Return: <span className="font-medium">{String(returnDate)}</span>
                     </div>
                   )}
                   {cabinClass && (
                     <div className="rounded-full bg-zinc-100 px-3 py-1">
-                      Cabin:{" "}
-                      <span className="font-medium">
-                        {String(cabinClass)}
-                      </span>
+                      Cabin: <span className="font-medium">{String(cabinClass)}</span>
                     </div>
                   )}
                 </div>
@@ -303,9 +286,7 @@ function MyRequestDetailsDrawer({
                       <div className="text-[10px] uppercase tracking-wide text-zinc-500">
                         Preferred airline
                       </div>
-                      <div className="text-[11px] font-semibold">
-                        {String(preferredAirline)}
-                      </div>
+                      <div className="text-[11px] font-semibold">{String(preferredAirline)}</div>
                     </div>
                   )}
                   {preferredTime && (
@@ -313,9 +294,7 @@ function MyRequestDetailsDrawer({
                       <div className="text-[10px] uppercase tracking-wide text-zinc-500">
                         Time preference
                       </div>
-                      <div className="text-[11px] font-semibold">
-                        {String(preferredTime)}
-                      </div>
+                      <div className="text-[11px] font-semibold">{String(preferredTime)}</div>
                     </div>
                   )}
                   {needBy && (
@@ -323,18 +302,14 @@ function MyRequestDetailsDrawer({
                       <div className="text-[10px] uppercase tracking-wide text-zinc-500">
                         Need approval by
                       </div>
-                      <div className="text-[11px] font-semibold">
-                        {String(needBy)}
-                      </div>
+                      <div className="text-[11px] font-semibold">{String(needBy)}</div>
                     </div>
                   )}
                 </div>
 
                 {notes && (
                   <div className="mt-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-3 py-2 text-[11px] text-zinc-800">
-                    <span className="mr-1 font-semibold text-zinc-500">
-                      Note:
-                    </span>
+                    <span className="mr-1 font-semibold text-zinc-500">Note:</span>
                     {String(notes)}
                   </div>
                 )}
@@ -349,8 +324,8 @@ function MyRequestDetailsDrawer({
                     Itinerary items
                   </div>
                   <div className="text-[10px] text-zinc-500">
-                    {cartItems.length} item
-                    {cartItems.length !== 1 ? "s" : ""} • {formatInr(total)}
+                    {cartItems.length} item{cartItems.length !== 1 ? "s" : ""} •{" "}
+                    {formatInr(total)}
                   </div>
                 </div>
 
@@ -365,13 +340,11 @@ function MyRequestDetailsDrawer({
                           {item.title || item.type || "Travel item"}
                         </div>
                         <div className="text-[10px] text-zinc-600">
-                          {String(item.type || "").toUpperCase() || "SERVICE"} •
-                          &nbsp;Qty {item.qty || 1} • {formatInr(item.price)}
+                          {String(item.type || "").toUpperCase() || "SERVICE"} •&nbsp;Qty{" "}
+                          {item.qty || 1} • {formatInr(item.price)}
                         </div>
                         {item.description && (
-                          <div className="mt-1 text-[11px] text-zinc-800">
-                            {item.description}
-                          </div>
+                          <div className="mt-1 text-[11px] text-zinc-800">{item.description}</div>
                         )}
                       </div>
                     </div>
@@ -388,8 +361,7 @@ function MyRequestDetailsDrawer({
                 </div>
                 <ol className="mt-2 space-y-1 text-[11px] text-zinc-800">
                   {history.map((h, idx) => {
-                    const ts =
-                      h.ts || h.date || h.createdAt || h.updatedAt || null;
+                    const ts = h.ts || h.date || h.createdAt || h.updatedAt || null;
                     const tsStr = ts
                       ? new Date(String(ts)).toLocaleString("en-IN", {
                           dateStyle: "medium",
@@ -407,21 +379,11 @@ function MyRequestDetailsDrawer({
                           <div className="font-semibold">
                             {st || "UPDATED"}{" "}
                             {h.byEmail && (
-                              <span className="font-normal text-zinc-500">
-                                • {h.byEmail}
-                              </span>
+                              <span className="font-normal text-zinc-500">• {h.byEmail}</span>
                             )}
                           </div>
-                          {tsStr && (
-                            <div className="text-[10px] text-zinc-500">
-                              {tsStr}
-                            </div>
-                          )}
-                          {h.note && (
-                            <div className="mt-0.5 text-[11px] text-zinc-800">
-                              {h.note}
-                            </div>
-                          )}
+                          {tsStr && <div className="text-[10px] text-zinc-500">{tsStr}</div>}
+                          {h.note && <div className="mt-0.5 text-[11px] text-zinc-800">{h.note}</div>}
                         </div>
                       </li>
                     );
@@ -438,10 +400,7 @@ function MyRequestDetailsDrawer({
                 <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#00477f] text-[11px] text-white">
                   ⚡
                 </span>
-                <span>
-                  You can update this request until it is fully approved /
-                  declined.
-                </span>
+                <span>You can update this request until it is fully approved / declined.</span>
               </div>
               <div className="flex gap-2">
                 <button
@@ -484,13 +443,15 @@ export default function ApprovalMine() {
     setLoading(true);
     try {
       const res = await getMyApprovalRequests();
-      const list = res?.rows || [];
+      const list = Array.isArray(res?.rows) ? [...res.rows] : [];
+
       // Optional: newest first
       list.sort((a: any, b: any) => {
         const ta = new Date(a.updatedAt || a.createdAt || 0).getTime();
         const tb = new Date(b.updatedAt || b.createdAt || 0).getTime();
         return tb - ta;
       });
+
       setRows(list);
     } catch (e: any) {
       const msg =
@@ -554,12 +515,10 @@ export default function ApprovalMine() {
               </span>
               <span className="px-3">Pluto Copilot – My Travel Approvals</span>
             </div>
-            <h1 className="mt-3 text-xl font-semibold text-zinc-900">
-              My Requests
-            </h1>
+            <h1 className="mt-3 text-xl font-semibold text-zinc-900">My Requests</h1>
             <p className="mt-1 text-xs text-zinc-500">
-              Track every approval, see Copilot signals, and update or revoke
-              requests before ticketing.
+              Track every approval, see Copilot signals, and update or revoke requests before
+              ticketing.
             </p>
           </div>
 
@@ -586,24 +545,27 @@ export default function ApprovalMine() {
             {rows.map((r) => {
               const cartItems = (r.cartItems || []) as any[];
               const total = cartItems.reduce(
-                (s: number, i: any) =>
-                  s + (Number(i.price) || 0) * (Number(i.qty) || 1),
+                (s: number, i: any) => s + (Number(i.price) || 0) * (Number(i.qty) || 1),
                 0,
               );
+
               const primary = cartItems[0] || {};
               const meta: any = primary.meta || {};
               const origin = meta.origin || meta.from;
               const destination = meta.destination || meta.to;
+
               const segLabel =
                 origin && destination
                   ? `${origin} → ${destination}`
                   : primary.title || primary.type || "Travel item";
+
               const updatedAtStr = r.updatedAt
                 ? new Date(r.updatedAt).toLocaleString("en-IN", {
                     dateStyle: "medium",
                     timeStyle: "short",
                   })
                 : "";
+
               const ai = getAiSignal(r);
               const canModify =
                 String(r.status || "").toLowerCase() === "pending" ||
@@ -633,9 +595,7 @@ export default function ApprovalMine() {
                         )}
                       </div>
 
-                      <div className="mt-2 text-sm font-semibold text-zinc-900">
-                        {segLabel}
-                      </div>
+                      <div className="mt-2 text-sm font-semibold text-zinc-900">{segLabel}</div>
 
                       <div className="mt-1 text-[11px] text-zinc-500">
                         Last updated: {updatedAtStr || "—"}
@@ -643,18 +603,15 @@ export default function ApprovalMine() {
 
                       {r.comments && (
                         <div className="mt-2 rounded-2xl bg-zinc-50 px-3 py-2 text-[11px] text-zinc-700">
-                          <span className="mr-1 font-semibold text-zinc-500">
-                            Note:
-                          </span>
+                          <span className="mr-1 font-semibold text-zinc-500">Note:</span>
                           {r.comments}
                         </div>
                       )}
                     </div>
 
                     <div className="flex flex-col items-end gap-2">
-                      <span className={badge(r.status)}>
-                        {String(r.status || "").toUpperCase()}
-                      </span>
+                      <span className={badge(r.status)}>{String(r.status || "").toUpperCase()}</span>
+
                       {r.adminState && (
                         <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700">
                           ADMIN: {String(r.adminState).toUpperCase()}
@@ -680,9 +637,7 @@ export default function ApprovalMine() {
                         </button>
                         <button
                           type="button"
-                          onClick={() =>
-                            handleRevoke((r as any)._id as string)
-                          }
+                          onClick={() => handleRevoke((r as any)._id as string)}
                           disabled={!canModify || busyId === (r as any)._id}
                           className="rounded-full bg-red-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-red-600 disabled:opacity-60"
                         >
@@ -698,8 +653,8 @@ export default function ApprovalMine() {
         ) : (
           <div className="rounded-3xl border border-zinc-100 bg-white/90 px-4 py-6 text-sm text-zinc-600">
             You haven&apos;t raised any approvals yet. Click{" "}
-            <span className="font-semibold">New Request</span> to start a
-            Pluto-assisted travel approval.
+            <span className="font-semibold">New Request</span> to start a Pluto-assisted travel
+            approval.
           </div>
         )}
       </div>
