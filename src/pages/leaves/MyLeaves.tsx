@@ -705,6 +705,14 @@ export default function MyLeaves() {
           </div>
         </div>
 
+        {/* Empty state */}
+        {!loading && leaves.length === 0 && (
+          <div className="text-center py-16 text-slate-400">
+            <p className="text-lg font-medium">No leave requests yet</p>
+            <p className="text-sm mt-1">Your submitted leave requests will appear here</p>
+          </div>
+        )}
+
         {/* History table */}
         <div className="mt-4 overflow-auto rounded-2xl border border-slate-100">
           <table className="w-full text-[11px] md:text-xs">
