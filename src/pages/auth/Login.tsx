@@ -1,19 +1,36 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import api, { setAccessToken } from "../../lib/api";
 
 export default function Login() {
-  const navigate = useNavigate();
-  const { setUser } = useAuth();
-
+  const [step, setStep] = useState<1 | 2>(1);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [userName, setUserName] = useState("");
+  const navigate = useNavigate();
+  const { setUser } = useAuth();
+  const passwordRef = useRef<HTMLInputElement>(null);
 
-  async function handleSubmit() {
-    setError(null);
+  useEffect(() => {
+    if (step === 2) setTimeout(() => passwordRef.current?.focus(), 100);
+  }, [step]);
+
+  function handleEmailSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!email.trim()) { setError("Please enter your email."); return; }
+    const name = email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    setUserName(name);
+    setStep(2);
+  }
+
+  async function handleSignIn(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (!password) { setError("Please enter your password."); return; }
     setLoading(true);
     try {
       const resData = await api.post("/auth/login", { email, password });
@@ -31,93 +48,125 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left panel */}
-      <div className="hidden lg:flex w-1/2 bg-gradient-to-br from-[#00477f] via-[#005a9e] to-[#003560] flex-col justify-between p-12">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <span className="text-white/50 text-lg font-light tracking-wide">Helloviza</span>
-            <span className="text-white/25 text-base">X</span>
-            <span className="text-white text-lg font-semibold tracking-wide">Plumtrips</span>
-          </div>
-          <p className="text-white/35 text-[11px] mt-1 tracking-widest uppercase">Technology by Pluto.ai</p>
+    <div className="min-h-screen bg-white flex flex-col">
+
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-8 py-5">
+        <div className="flex items-center gap-2">
+          <img src="/logo.png" alt="Plumtrips" className="h-7" onError={e => (e.currentTarget.style.display = "none")} />
+          <span className="text-[#00477f] text-lg font-semibold">Plumtrips</span>
         </div>
-        <div>
-          <h1 className="text-white text-4xl font-semibold leading-tight">
-            Orchestrate People.<br />Streamline Operations.<br />Elevate Every Journey.
-          </h1>
-          <p className="text-white/60 text-sm mt-4">
-            A sophisticated platform designed for travel companies to manage teams, workflows, and travel experiences with clarity and precision.
-          </p>
-        </div>
-        <div>
-          <p className="text-white/25 text-[10px] uppercase tracking-[0.2em] mb-3">Recognised & Backed By</p>
-          <div className="flex flex-wrap gap-2">
-            <div className="flex items-center gap-1.5 bg-white/8 border border-white/10 rounded-full px-3 py-1.5 backdrop-blur-sm">
-              <svg className="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-              </svg>
-              <span className="text-white/70 text-[11px] font-medium">NVIDIA Inception</span>
-            </div>
-            <div className="flex items-center gap-1.5 bg-white/8 border border-white/10 rounded-full px-3 py-1.5 backdrop-blur-sm">
-              <svg className="w-3 h-3 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-              </svg>
-              <span className="text-white/70 text-[11px] font-medium">Google for Startups</span>
-            </div>
-            <div className="flex items-center gap-1.5 bg-white/8 border border-white/10 rounded-full px-3 py-1.5 backdrop-blur-sm">
-              <svg className="w-3 h-3 text-orange-400" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
-              </svg>
-              <span className="text-white/70 text-[11px] font-medium">DPIIT Recognised</span>
-            </div>
-          </div>
-          <p className="text-white/30 text-xs mt-6">© 2026 Plumtrips</p>
-        </div>
+        <span className="text-xs text-slate-400">Powered by Pluto.ai</span>
       </div>
 
-      {/* Right panel */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center bg-white p-8">
-        <div className="w-full max-w-sm">
-          <span className="text-[#00477f] text-xl font-bold">Plumtrips</span>
-          <h2 className="text-2xl font-semibold text-slate-900 mt-8 mb-6">Sign in</h2>
+      {/* Main content */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 pb-16">
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Email address</label>
+        {/* Step 1 headline */}
+        {step === 1 && (
+          <div className="text-center mb-12 max-w-xl">
+            <h1 className="text-[2.5rem] font-bold text-slate-900 leading-tight tracking-tight">
+              Orchestrate People.<br />
+              Streamline Operations.<br />
+              <span style={{ background: "linear-gradient(90deg,#00477f,#0066b3)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                Elevate Every Journey.
+              </span>
+            </h1>
+            <p className="text-slate-400 text-sm mt-4 leading-relaxed max-w-md mx-auto">
+              A sophisticated platform designed for travel companies to manage teams, workflows, and travel experiences with clarity and precision.
+            </p>
+          </div>
+        )}
+
+        {/* Step 2 welcome */}
+        {step === 2 && (
+          <div className="text-center mb-8">
+            <div className="w-14 h-14 rounded-full bg-[#00477f] text-white text-xl font-semibold flex items-center justify-center mx-auto mb-4">
+              {userName.charAt(0)}
+            </div>
+            <h2 className="text-xl font-semibold text-slate-900">Welcome back, {userName.split(" ")[0]}</h2>
+            <button
+              onClick={() => { setStep(1); setPassword(""); setError(""); }}
+              className="text-sm text-slate-400 hover:text-[#00477f] mt-1 flex items-center gap-1 mx-auto transition-colors"
+            >
+              <span>{email}</span>
+              <span className="text-xs underline">Change</span>
+            </button>
+          </div>
+        )}
+
+        {/* Form */}
+        <div className="w-full max-w-sm">
+          {step === 1 ? (
+            <form onSubmit={handleEmailSubmit} className="space-y-3">
               <input
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#00477f]/20 focus:border-[#00477f] text-sm text-slate-900 bg-white"
+                placeholder="Email address"
+                autoFocus
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#00477f]/20 focus:border-[#00477f] text-sm text-slate-900 placeholder:text-slate-400 transition-all"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
+              {error && <p className="text-red-500 text-xs">{error}</p>}
+              <button
+                type="submit"
+                className="w-full bg-[#00477f] hover:bg-[#003d6e] text-white py-3 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2"
+              >
+                Continue
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleSignIn} className="space-y-3">
               <input
+                ref={passwordRef}
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#00477f]/20 focus:border-[#00477f] text-sm text-slate-900 bg-white"
+                placeholder="Password"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#00477f]/20 focus:border-[#00477f] text-sm text-slate-900 placeholder:text-slate-400 transition-all"
               />
-            </div>
-
-            {error && <p className="text-red-600 text-sm">{error}</p>}
-
-            <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className="w-full bg-[#00477f] hover:bg-[#003d6e] text-white py-2.5 rounded-lg text-sm font-medium transition-colors mt-2 disabled:opacity-50"
-            >
-              {loading ? "Signing in..." : "Sign In"}
-            </button>
-
-            <a href="/forgot" className="text-sm text-[#00477f] hover:underline text-center block mt-4">
-              Forgot password?
-            </a>
-          </div>
+              {error && <p className="text-red-500 text-xs">{error}</p>}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-[#00477f] hover:bg-[#003d6e] disabled:opacity-60 text-white py-3 rounded-xl text-sm font-medium transition-colors"
+              >
+                {loading ? "Signing in..." : "Sign In"}
+              </button>
+              <div className="text-center">
+                <a href="/forgot" className="text-sm text-[#00477f] hover:underline">
+                  Forgot password?
+                </a>
+              </div>
+            </form>
+          )}
         </div>
       </div>
+
+      {/* Bottom trust bar */}
+      <div className="pb-8 flex flex-col items-center gap-4">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-1.5 opacity-40 hover:opacity-70 transition-opacity">
+            <div className="w-2 h-2 rounded-full bg-green-500"></div>
+            <span className="text-[11px] text-slate-500 font-medium">NVIDIA Inception</span>
+          </div>
+          <div className="w-px h-4 bg-slate-200"></div>
+          <div className="flex items-center gap-1.5 opacity-40 hover:opacity-70 transition-opacity">
+            <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+            <span className="text-[11px] text-slate-500 font-medium">Google for Startups</span>
+          </div>
+          <div className="w-px h-4 bg-slate-200"></div>
+          <div className="flex items-center gap-1.5 opacity-40 hover:opacity-70 transition-opacity">
+            <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+            <span className="text-[11px] text-slate-500 font-medium">Startup India · DPIIT</span>
+          </div>
+        </div>
+        <p className="text-[11px] text-slate-300">© 2026 Plumtrips. All rights reserved.</p>
+      </div>
+
     </div>
   );
 }
