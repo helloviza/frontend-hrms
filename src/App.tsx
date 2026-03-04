@@ -5,6 +5,7 @@ import { Outlet, useLocation, NavLink } from "react-router-dom";
 import Header from "./components/layout/Header";
 import Footer from "./components/layout/Footer";
 import { useAuth } from "./context/AuthContext";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
@@ -295,6 +296,7 @@ const showCustomerProposalsLink = useMemo(() => {
   }, [hideShell, user]);
 
   return (
+    <ErrorBoundary>
     <div className="min-h-screen bg-zinc-50 font-sans selection:bg-indigo-100 selection:text-indigo-900">
       
       {/* 1. Global Header (Hidden in Concierge) */}
@@ -404,5 +406,6 @@ const showCustomerProposalsLink = useMemo(() => {
       {/* 4. Global Footer (Hidden in Concierge) */}
       {!hideFooter && <Footer />}
     </div>
+    </ErrorBoundary>
   );
 }
