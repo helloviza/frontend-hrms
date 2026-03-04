@@ -82,6 +82,16 @@ import UserCreation from "./pages/admin/UserCreation";
 import BookingHistory from "./pages/approvals/BookingHistory";
 
 import Protected from "./router/Protected";
+import {
+  isVendor,
+  isCustomer,
+  isApprover,
+  isStaffAdmin,
+  hasAnyRole,
+  canAccessUserCreation,
+  truthy,
+  AnyUser,
+} from "./lib/rbac";
 
 // ✅ Proposals (admin)
 import AdminProposalByRequest from "./pages/admin/proposals/AdminProposalByRequest";
@@ -97,203 +107,6 @@ import CopilotPage from "./pages/copilot/CopilotPage";
 import ConciergePage from "./pages/concierge/ConciergePage";
 
 import Splash from "./pages/Splash";
-
-/* -------------------------------------------------------------------------- */
-/* Small helpers                                                              */
-/* -------------------------------------------------------------------------- */
-
-type AnyUser = {
-  roles?: string[];
-  hrmsAccessRole?: string;
-  role?: string;
-  hrmsAccessLevel?: string;
-  userType?: string;
-  accountType?: string;
-
-  // optional vendor/customer flags/ids (backend may vary)
-  vendorId?: string;
-  vendor_id?: string;
-  vendorProfileId?: string;
-  vendorProfile?: any;
-  vendor?: any;
-
-  businessId?: string;
-  business_id?: string;
-  customerId?: string;
-  customer_id?: string;
-  business?: any;
-  customer?: any;
-
-  isVendor?: boolean;
-  is_vendor?: boolean;
-  isCustomer?: boolean;
-  is_customer?: boolean;
-  isBusiness?: boolean;
-  is_business?: boolean;
-
-  // approver-ish signals (backend may vary)
-  approverId?: string;
-  approver_id?: string;
-  isApprover?: boolean;
-  is_approver?: boolean;
-  approvalRole?: string;
-
-  [key: string]: any;
-};
-
-function norm(v: any): string {
-  return String(v ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/[\s\-_]/g, "");
-}
-
-function truthy(v: any) {
-  return v === true || v === 1 || v === "1" || v === "true";
-}
-
-function collectRoles(user: AnyUser | null | undefined): string[] {
-  if (!user) return [];
-
-  const out: string[] = [];
-  if (Array.isArray(user.roles)) out.push(...user.roles);
-
-  if (user.hrmsAccessRole) out.push(user.hrmsAccessRole);
-  if (user.role) out.push(user.role);
-
-  // optional type-ish fields
-  if (user.userType) out.push(user.userType);
-  if (user.accountType) out.push(user.accountType);
-  if (user.hrmsAccessLevel) out.push(user.hrmsAccessLevel);
-
-  // approver role field if present
-  if (user.approvalRole) out.push(user.approvalRole);
-
-  return out.map(norm).filter(Boolean);
-}
-
-function hasAnyRole(user: AnyUser | null | undefined, roles: string[]): boolean {
-  const userRoles = collectRoles(user);
-  const wanted = roles.map(norm);
-  return userRoles.some((r) => wanted.includes(r));
-}
-
-/**
- * Detect "Vendor" even if roles are wrong
- */
-function isVendor(user: AnyUser | null | undefined): boolean {
-  if (!user) return false;
-
-  if (
-    user.vendorId ||
-    user.vendor_id ||
-    user.vendorProfileId ||
-    user.vendorProfile ||
-    user.vendor?.id ||
-    truthy(user.isVendor) ||
-    truthy(user.is_vendor)
-  ) {
-    return true;
-  }
-
-  return hasAnyRole(user, ["VENDOR"]);
-}
-
-/**
- * Detect "Customer/Business" even if roles are wrong
- */
-function isCustomer(user: AnyUser | null | undefined): boolean {
-  if (!user) return false;
-
-  if (
-    user.businessId ||
-    user.business_id ||
-    user.customerId ||
-    user.customer_id ||
-    user.business?.id ||
-    user.customer?.id ||
-    truthy(user.isCustomer) ||
-    truthy(user.is_customer) ||
-    truthy(user.isBusiness) ||
-    truthy(user.is_business)
-  ) {
-    return true;
-  }
-
-  return hasAnyRole(user, [
-    "CUSTOMER",
-    "BUSINESS",
-    "CLIENT",
-    "CORPORATE",
-    "COMPANY",
-    "ORGANIZATION",
-    "ORG",
-  ]);
-}
-
-/**
- * Detect Approver (works for Staff or Customer approvers)
- */
-function isApprover(user: AnyUser | null | undefined): boolean {
-  if (!user) return false;
-
-  if (
-    user.approverId ||
-    user.approver_id ||
-    truthy(user.isApprover) ||
-    truthy(user.is_approver)
-  )
-    return true;
-
-  const roles = collectRoles(user);
-  return roles.some((r) =>
-    [
-      "APPROVER",
-      "TRAVELAPPROVER",
-      "FINANCEAPPROVER",
-      "BILLINGAPPROVER",
-      "COSTCENTERAPPROVER",
-      "MANAGERAPPROVER",
-    ].includes(r),
-  );
-}
-
-/**
- * ✅ Staff admin check (for Option A)
- * Allows Admin/HR/SuperAdmin to open customer approvals pages.
- */
-function isStaffAdmin(user: AnyUser | null | undefined): boolean {
-  if (!user) return false;
-  return hasAnyRole(user, [
-    "ADMIN",
-    "SUPERADMIN",
-    "SUPER_ADMIN",
-    "HR",
-    "HR_ADMIN",
-    "OPS",
-    "OPS_ADMIN",
-  ]);
-}
-
-/**
- * ✅ Who can access User Creation:
- * HR / Admin / SuperAdmin + Workspace Leader (Customer) + Approver
- */
-function canAccessUserCreation(user: AnyUser | null | undefined): boolean {
-  if (!user) return false;
-
-  // Block vendors always
-  if (isVendor(user)) return false;
-
-  // Staff privileged
-  if (hasAnyRole(user, ["HR", "ADMIN", "SUPERADMIN", "SUPER_ADMIN"])) return true;
-
-  // Customer + Approver should see it
-  if (isCustomer(user)) return true;
-  if (isApprover(user)) return true;
-
-  return false;
-}
 
 /* -------------------------------------------------------------------------- */
 /* Route selectors                                                            */
