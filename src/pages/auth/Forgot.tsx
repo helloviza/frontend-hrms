@@ -5,11 +5,30 @@ import { Link } from "react-router-dom";
 export default function Forgot() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Placeholder: backend endpoint not implemented in our scaffold.
-    setSent(true);
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Something went wrong. Please try again.");
+        return;
+      }
+      setSent(true);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -33,8 +52,12 @@ export default function Forgot() {
               type="email"
               required
             />
-            <button className="w-full rounded-xl py-3 bg-ink text-white font-semibold">
-              Send reset link
+            {error && <p className="text-sm text-red-500 mb-2">{error}</p>}
+            <button
+              className="w-full rounded-xl py-3 bg-ink text-white font-semibold disabled:opacity-60"
+              disabled={loading}
+            >
+              {loading ? "Sending…" : "Send reset link"}
             </button>
           </>
         )}

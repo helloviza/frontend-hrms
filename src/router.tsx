@@ -10,6 +10,7 @@ import { useAuth } from "./context/AuthContext";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import Forgot from "./pages/auth/Forgot";
+import ResetPassword from "./pages/auth/ResetPassword";
 import PublicOnboarding from "./pages/onboarding/Public";
 import PublicFlow from "./pages/onboarding/PublicFlow";
 
@@ -367,6 +368,7 @@ const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
   { path: "/register", element: <Register /> },
   { path: "/forgot", element: <Forgot /> },
+  { path: "/reset-password", element: <ResetPassword /> },
 
   { path: "/onboarding/:token", element: <PublicOnboarding /> },
   { path: "/onboarding/:token/flow", element: <PublicFlow /> },
