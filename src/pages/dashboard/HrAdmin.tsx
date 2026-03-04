@@ -6,6 +6,9 @@ import api from "../../lib/api";
 
 type AnyObj = Record<string, any>;
 
+const mask = (val: string, show: number) =>
+  val ? "X".repeat(Math.max(0, val.length - show)) + val.slice(-show) : "—";
+
 export default function HrAdmin() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -660,8 +663,8 @@ export default function HrAdmin() {
                       ID &amp; Compliance
                     </div>
                     <div className="mt-1 grid gap-3 md:grid-cols-3">
-                      <InfoField label="Aadhaar" value={detailView.aadhaar} />
-                      <InfoField label="PAN" value={detailView.pan} />
+                      <InfoField label="Aadhaar" value={mask(detailView.aadhaar, 4)} />
+                      <InfoField label="PAN" value={mask(detailView.pan, 4)} />
                       <InfoField
                         label="Passport"
                         value={detailView.passport}
@@ -689,7 +692,7 @@ export default function HrAdmin() {
                       />
                       <InfoField
                         label="Account Number"
-                        value={detailView.bankAccountNumber}
+                        value={mask(detailView.bankAccountNumber, 4)}
                       />
                       <InfoField label="IFSC" value={detailView.bankIfsc} />
                     </div>
