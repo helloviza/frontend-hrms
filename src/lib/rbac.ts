@@ -465,3 +465,7 @@ export function canAccessUserCreation(user: AnyUser | null | undefined): boolean
 
   return false;
 }
+
+export function canUseSBT(user: any): boolean {
+  return user?.sbtEnabled === true;
+}

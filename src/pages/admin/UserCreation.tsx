@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import api from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import AddStaffModal from "../../components/admin/AddStaffModal";
+import GrantAccessModal from "../../components/admin/GrantAccessModal";
 
 /* =========================================================
  * Small utils
@@ -245,6 +246,7 @@ export default function UserCreation() {
 
   // Add Staff modal
   const [showAddStaff, setShowAddStaff] = useState(false);
+  const [showGrantAccess, setShowGrantAccess] = useState(false);
 
   // Admin credential console (optional)
   const [aEmail, setAEmail] = useState("");
@@ -1189,6 +1191,11 @@ export default function UserCreation() {
         onClose={() => setShowAddStaff(false)}
         onCreated={() => { setShowAddStaff(false); reload(); }}
       />
+      <GrantAccessModal
+        open={showGrantAccess}
+        onClose={() => setShowGrantAccess(false)}
+        onGranted={() => setShowGrantAccess(false)}
+      />
       <div className="mx-auto max-w-7xl p-4 sm:p-6">
         {/* Header */}
         <div className={`mb-5 overflow-hidden rounded-[30px] border border-zinc-200/70 bg-white/70 backdrop-blur shadow-sm`}>
@@ -1219,6 +1226,18 @@ export default function UserCreation() {
                   <span className={`${ui.chip} border-[#00477f]/20 bg-[#00477f]/10 text-[#00477f]`}>
                     Staff Mode • Business Selector Enabled
                   </span>
+                )}
+
+                {canUseAdminConsole && (
+                  <button
+                    onClick={() => setShowGrantAccess(true)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#00477f] px-4 text-[12px] font-semibold text-[#00477f] hover:bg-[#00477f]/5 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                    Grant Access
+                  </button>
                 )}
 
                 {canUseAdminConsole && (

@@ -97,6 +97,14 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: "bookings",
+    label: "Bookings",
+    gate: isStaff,
+    items: [
+      { label: "Book Flights", to: "/sbt/flights", description: "Search and self-book flights via TBO" },
+    ],
+  },
+  {
     id: "people",
     label: "People",
     gate: (u) => isStaff(u) && staffHas(["Manager", "HR", "Admin", "SuperAdmin"])(u),
