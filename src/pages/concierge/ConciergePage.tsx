@@ -11,6 +11,8 @@ import { useAuth } from "../../context/AuthContext";
 import { jsPDF } from "jspdf";
 import FlightStatusCard from "../../components/FlightStatusCard"
 import rawAirports from "../../data/airports.json";
+import FlightResultCard, { SBTFlight, T as CT } from "../../components/sbt/FlightResultCard";
+import FlightFilters, { applyFilters, FilterState } from "../../components/sbt/FlightFilters";
 
 /* ─────────────────────────────────────────────
  * Design Tokens — "Obsidian Atlas"
@@ -118,14 +120,21 @@ type FlightListing = {
   airlineCode: string;
   flightNo:    string;
   logoUrl:     string;
-  departure:   { time: string; airport: string; iata: string };
-  arrival:     { time: string; airport: string; iata: string };
+  departure:   { time: string; airport: string; iata: string; city?: string; isoTime?: string };
+  arrival:     { time: string; airport: string; iata: string; city?: string; isoTime?: string };
   duration:    string;
   stops:       number;
   stopDetail:  string;
   price:       string;
+  priceINR?:   string;  // SerpAPI numeric string e.g. "8453"
   cabin:       string;
   bookUrl:     string;
+  // Optional SBT-compatible fields (populated when backend sends TBO data)
+  resultIndex?: string;
+  fare?:        { base?: number; taxes?: number; total?: number };
+  isLcc?:       boolean;
+  nonRefundable?: boolean;
+  baggage?:     string;
 };
 
 type FlightSearchResult = {
@@ -175,7 +184,9 @@ function hasPlanningIntent(text: string): boolean {
     /holiday/i, /vacation/i, /getaway/i, /offsite/i, /retreat/i,
     /business trip/i, /work trip/i, /conference/i,
     /stay in/i, /stay at/i,
-    /fly to/i, /flight to/i,
+    /fly(ing)?\s+from/i, /fly to/i, /flight to/i,
+    /flights?\s+(from|to|between|on|available|for)/i,
+    /(find|search|show|get|check).{0,30}flights?/i,
     /hotel/i, /accommodation/i, /where to stay/i,
     /what to do/i, /things to do/i, /explore/i,
     /weekend/i,
@@ -744,6 +755,7 @@ function FlightSearchPanel({ data, onSearch }: {
   data: FlightSearchResult;
   onSearch?: (params: any) => void;
 }) {
+  const navigate = useNavigate();
   const [tripType,      setTripType]      = useState<"one-way"|"round-trip"|"multi-city">("one-way");
   const [originAirport, setOriginAirport] = useState<AirportEntry>(
     getByIata(data.origin.iata) ?? {
@@ -776,6 +788,14 @@ function FlightSearchPanel({ data, onSearch }: {
   const [cheapest,   setCheapest]   = useState<FlightListing|null>(data.cheapest || null);
   const [fastest,    setFastest]    = useState<FlightListing|null>(data.fastest  || null);
   const [searchErr,  setSearchErr]  = useState<string|null>(null);
+  const [tboTraceId, setTboTraceId] = useState("");
+  const [flightSource, setFlightSource] = useState<"tbo"|"serp"|"none">(
+    (data as any).source || "none"
+  );
+  const [filters,    setFilters]    = useState<FilterState>({
+    stops: [], airlines: [], refundable: false, maxPrice: 0, depSlots: [], maxDuration: 0,
+  });
+  const [selectedFlight, setSelectedFlight] = useState<SBTFlight|null>(null);
 
   const totalPax = adults + children + infants;
   const paxLabel = `${totalPax} Traveller${totalPax > 1 ? "s" : ""}, ${cabin}`;
@@ -818,6 +838,8 @@ function FlightSearchPanel({ data, onSearch }: {
         setFlights(json.flights);
         setCheapest(json.cheapest);
         setFastest(json.fastest);
+        setTboTraceId(json.traceId || "");
+        setFlightSource(json.source || "none");
         setShowResults(true);
       } else {
         setSearchErr("No flights found for this route and date. Try adjusting the date or route.");
@@ -855,6 +877,95 @@ function FlightSearchPanel({ data, onSearch }: {
   const inputSub: React.CSSProperties = {
     fontSize: "10px", color: T.inkMid, fontWeight: 500, marginTop: "1px",
   };
+
+  // Map FlightListing[] → SBTFlight[] for shared card component
+  function parsePrice(p: any): number {
+    if (typeof p === "number" && p > 0) return p;
+    if (typeof p === "string") {
+      const n = parseInt(p.replace(/[₹,\s]/g, ""), 10);
+      return isNaN(n) ? 0 : n;
+    }
+    return 0;
+  }
+  function parseDuration(d: any): number {
+    if (typeof d === "number") return d;
+    if (typeof d === "string") {
+      const match = d.match(/(\d+)h\s*(\d+)?m?/);
+      if (match) return (parseInt(match[1] || "0") * 60) + parseInt(match[2] || "0");
+    }
+    return 120;
+  }
+  // Reject "???" placeholder from SerpAPI logo-regex; derive code from name fallback
+  function safeAirlineCode(code?: string, name?: string): string {
+    if (code && code !== "???" && /^[A-Z0-9]{2,3}$/.test(code)) return code;
+    return (name || "").slice(0, 2).toUpperCase() || "XX";
+  }
+
+  const sbtFlights: SBTFlight[] = (flights || [])
+    .filter(f => !!f.bookUrl || !!f.resultIndex)
+    .map((f, i) => {
+      const totalPrice = parsePrice(f.fare?.total) || parsePrice((f as any).priceINR) || parsePrice(f.price) || 0;
+      return {
+        ResultIndex: f.resultIndex || `serp-${f.airlineCode || "XX"}-${f.flightNo || i}-${i}`,
+        IsLCC: f.isLcc ?? false,
+        NonRefundable: f.nonRefundable ?? false,
+        Fare: {
+          BaseFare: f.fare?.base ?? Math.round(totalPrice * 0.7),
+          Tax: f.fare?.taxes ?? Math.round(totalPrice * 0.3),
+          TotalFare: totalPrice,
+          PublishedFare: totalPrice,
+          Currency: "INR",
+        },
+        Segments: [[{
+          Airline: {
+            AirlineCode: safeAirlineCode(f.airlineCode, f.airline),
+            AirlineName: f.airline || f.airlineCode || "Unknown",
+            FlightNumber: f.flightNo || (f as any).flightNumber || "",
+          },
+          Origin: {
+            Airport: {
+              AirportCode: f.departure?.iata || "",
+              AirportName: f.departure?.iata || "",
+              CityName: f.departure?.city || f.departure?.iata || "",
+            },
+            DepTime: f.departure?.isoTime || f.departure?.time || "",
+          },
+          Destination: {
+            Airport: {
+              AirportCode: f.arrival?.iata || "",
+              AirportName: f.arrival?.iata || "",
+              CityName: f.arrival?.city || f.arrival?.iata || "",
+            },
+            ArrTime: f.arrival?.isoTime || f.arrival?.time || "",
+          },
+          Duration: parseDuration(f.duration),
+          Baggage: f.baggage || "15 Kg",
+          CabinBaggage: "7 Kg",
+          SeatsAvailable: 9,
+        }]],
+        _bookUrl: f.bookUrl,
+      } as SBTFlight & { _bookUrl: string };
+    });
+
+  const filteredConciergeFlights = sbtFlights.length
+    ? applyFilters(sbtFlights, filters)
+    : [];
+
+  // Navigate to SBT booking flow when a TBO flight is selected
+  useEffect(() => {
+    if (selectedFlight && flightSource === "tbo" && tboTraceId) {
+      navigate("/sbt/flights/book", {
+        state: {
+          flight: selectedFlight,
+          traceId: tboTraceId,
+          origin:      { code: data.origin.iata,      city: data.origin.city },
+          dest:        { code: data.destination.iata, city: data.destination.city },
+          pax:         { adults, children, infants },
+          cabin: 2,
+        },
+      });
+    }
+  }, [selectedFlight]);
 
   return (
     <div style={{ marginBottom: "24px", fontFamily: T.body }}>
@@ -1060,87 +1171,74 @@ function FlightSearchPanel({ data, onSearch }: {
                 {depDate && <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "11px", marginLeft: "10px", fontWeight: 500 }}>{depDate}</span>}
               </p>
             </div>
-            <span style={{ fontSize: "8px", background: "rgba(52,211,153,0.15)", color: "#34d399", padding: "3px 10px", borderRadius: "20px", fontWeight: 800, letterSpacing: "0.1em" }}>
-              LIVE · Plumtrips Flights
-            </span>
+            {flightSource === "tbo" && (
+              <span style={{ fontSize: 10, background: "rgba(201,169,110,0.15)", color: T.gold, padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>
+                LIVE · TBO
+              </span>
+            )}
+            {flightSource === "serp" && (
+              <span style={{ fontSize: 10, background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.4)", padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>
+                Google Flights
+              </span>
+            )}
+            {(flightSource === "none" || !flightSource) && (
+              <span style={{ fontSize: "8px", background: "rgba(52,211,153,0.15)", color: "#34d399", padding: "3px 10px", borderRadius: "20px", fontWeight: 800, letterSpacing: "0.1em" }}>
+                LIVE · Plumtrips Flights
+              </span>
+            )}
           </div>
 
+          {/* Cheapest / Fastest callout */}
           {(cheapest || fastest) && (
-            <div style={{ display: "flex", gap: "1px", background: T.border }}>
+            <div style={{ display:"flex", gap:12, padding:"12px 16px", background: T.canvasDeep, borderBottom:`1px solid ${T.border}` }}>
               {cheapest && (
-                <div style={{ flex: 1, padding: "12px 18px", background: T.canvas }}>
-                  <p style={{ fontSize: "8px", fontWeight: 900, color: T.gold, letterSpacing: "0.15em", margin: "0 0 3px" }}>CHEAPEST</p>
-                  <p style={{ fontSize: "20px", fontWeight: 900, color: T.ink, margin: 0 }}>{cheapest.price}</p>
-                  <p style={{ fontSize: "10px", color: T.inkMid, margin: "2px 0 0" }}>{cheapest.airline} · {cheapest.stopDetail}</p>
+                <div style={{ flex:1, background:"rgba(201,169,110,0.1)", border:"1px solid rgba(201,169,110,0.2)",
+                  borderRadius:12, padding:"8px 12px" }}>
+                  <p style={{ fontSize:10, color:T.gold, fontWeight:700, margin:"0 0 2px", textTransform:"uppercase", letterSpacing:"0.08em" }}>Cheapest</p>
+                  <p style={{ fontSize:16, fontWeight:800, color:T.ink, margin:0 }}>{cheapest.price}</p>
+                  <p style={{ fontSize:10, color:T.inkMid, margin:0 }}>{cheapest.airline} · {cheapest.stopDetail}</p>
                 </div>
               )}
               {fastest && fastest.flightNo !== cheapest?.flightNo && (
-                <div style={{ flex: 1, padding: "12px 18px", background: T.canvas }}>
-                  <p style={{ fontSize: "8px", fontWeight: 900, color: "#818cf8", letterSpacing: "0.15em", margin: "0 0 3px" }}>FASTEST</p>
-                  <p style={{ fontSize: "20px", fontWeight: 900, color: T.ink, margin: 0 }}>{fastest.duration}</p>
-                  <p style={{ fontSize: "10px", color: T.inkMid, margin: "2px 0 0" }}>{fastest.airline} · {fastest.price}</p>
+                <div style={{ flex:1, background:"rgba(5,150,105,0.06)", border:"1px solid rgba(5,150,105,0.15)",
+                  borderRadius:12, padding:"8px 12px" }}>
+                  <p style={{ fontSize:10, color:T.emerald, fontWeight:700, margin:"0 0 2px", textTransform:"uppercase", letterSpacing:"0.08em" }}>Fastest</p>
+                  <p style={{ fontSize:16, fontWeight:800, color:T.ink, margin:0 }}>{fastest.duration}</p>
+                  <p style={{ fontSize:10, color:T.inkMid, margin:0 }}>{fastest.airline} · {fastest.price}</p>
                 </div>
               )}
             </div>
           )}
 
-          <div style={{ background: "#fff" }}>
-            {flights.map((flight, idx) => (
-              <a key={idx} href={flight.bookUrl} target="_blank" rel="noopener noreferrer"
-                style={{
-                  display: "flex", alignItems: "center", padding: "14px 20px",
-                  borderTop: idx > 0 ? `1px solid ${T.border}` : "none",
-                  textDecoration: "none", gap: "14px", transition: "background 0.15s",
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = T.canvasDeep; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#fff"; }}
-              >
-                <div style={{
-                  width: "38px", height: "38px", borderRadius: "10px",
-                  background: T.canvasDeep, flexShrink: 0, overflow: "hidden",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <img src={flight.logoUrl} alt={flight.airline}
-                    style={{ width: "30px", height: "30px", objectFit: "contain" }}
-                    onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+          {/* Filters + results side by side */}
+          <div style={{ display:"flex", gap:12, padding:"12px 16px", width:"100%", minWidth:0 }}>
+            <div style={{ width:200, flexShrink:0 }}>
+              <FlightFilters
+                flights={sbtFlights}
+                filters={filters}
+                onChange={setFilters}
+                dark={true}
+              />
+            </div>
+            <div style={{ flex:1, minWidth:0, overflow:"visible" }}>
+              {filteredConciergeFlights.length === 0 ? (
+                <p style={{ color:T.inkSoft, fontSize:12, textAlign:"center", padding:"20px 0" }}>
+                  No flights match filters
+                </p>
+              ) : (
+                filteredConciergeFlights.map(f => (
+                  <FlightResultCard
+                    key={f.ResultIndex}
+                    flight={f}
+                    selected={selectedFlight?.ResultIndex === f.ResultIndex}
+                    onSelect={setSelectedFlight}
+                    mode="concierge"
+                    bookUrl={(f as any)._bookUrl}
+                    darkMode={true}
                   />
-                </div>
-
-                <div style={{ flex: "0 0 120px" }}>
-                  <p style={{ fontSize: "12px", fontWeight: 800, color: T.ink, margin: 0 }}>{flight.airline}</p>
-                  <p style={{ fontSize: "10px", color: T.inkSoft, margin: "1px 0 0" }}>{flight.flightNo}</p>
-                </div>
-
-                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "8px" }}>
-                  <div style={{ textAlign: "right" }}>
-                    <p style={{ fontSize: "16px", fontWeight: 800, color: T.ink, margin: 0, fontVariantNumeric: "tabular-nums" }}>{flight.departure.time}</p>
-                    <p style={{ fontSize: "9px", color: T.inkSoft, margin: "1px 0 0" }}>{flight.departure.iata}</p>
-                  </div>
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
-                    <span style={{ fontSize: "9px", color: T.inkSoft }}>{flight.duration}</span>
-                    <div style={{ width: "100%", height: "1px", background: T.borderDeep, position: "relative" }}>
-                      <span style={{ position: "absolute", left: "50%", top: "-4px", transform: "translateX(-50%)", fontSize: "9px" }}>✈</span>
-                    </div>
-                    <span style={{ fontSize: "9px", fontWeight: 700, color: flight.stops === 0 ? T.emerald : T.amber }}>{flight.stopDetail}</span>
-                  </div>
-                  <div>
-                    <p style={{ fontSize: "16px", fontWeight: 800, color: T.ink, margin: 0, fontVariantNumeric: "tabular-nums" }}>{flight.arrival.time}</p>
-                    <p style={{ fontSize: "9px", color: T.inkSoft, margin: "1px 0 0" }}>{flight.arrival.iata}</p>
-                  </div>
-                </div>
-
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <p style={{ fontSize: "17px", fontWeight: 900, color: T.ink, margin: 0 }}>{flight.price}</p>
-                  <p style={{ fontSize: "9px", color: T.inkSoft, margin: "2px 0 4px" }}>{flight.cabin}</p>
-                  <span style={{
-                    display: "inline-block", padding: "4px 10px",
-                    background: T.obsidian, color: T.gold,
-                    borderRadius: "6px", fontSize: "9px", fontWeight: 800,
-                    letterSpacing: "0.08em",
-                  }}>SELECT →</span>
-                </div>
-              </a>
-            ))}
+                ))
+              )}
+            </div>
           </div>
 
           {data.tipLines && data.tipLines.length > 0 && (
@@ -1327,6 +1425,27 @@ export default function IntegratedConcierge() {
     } catch (e) { console.error(e); setLoading(false); }
   }
 
+  // Expand layout when any assistant message has live flight results
+  const hasFlights = messages.some(m =>
+    m.role === "assistant" &&
+    !m.isTyping &&
+    !(m as any).flightData &&
+    ((m.content as PlutoReplyV1).flightSearch?.flights?.length ?? 0) > 0
+  );
+  const chatWidth = hasFlights ? "1100px" : "860px";
+
+  // Only render FlightSearchPanel for the LAST assistant message that has one —
+  // showing it in every message creates duplicate "bars" in long conversations.
+  const lastFlightSearchIdx = messages.reduce((last, m, i) => {
+    if (m.role !== "assistant" || m.isTyping || (m as any).flightData) return last;
+    const fs = (m.content as PlutoReplyV1).flightSearch;
+    if (!fs) return last;
+    const isJunk = (s: string) => !s || !/^[A-Z]{3}$/.test(s.toUpperCase().trim());
+    if (isJunk(fs.origin?.iata) || isJunk(fs.destination?.iata)) return last;
+    if (fs.origin.iata === fs.destination.iata) return last;
+    return i;
+  }, -1);
+
   return (
     <div style={{
       display: "flex", height: "100vh", width: "100%",
@@ -1484,7 +1603,7 @@ export default function IntegratedConcierge() {
         </nav>
 
         <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", paddingBottom: "160px" }}>
-          <div style={{ maxWidth: "860px", margin: "0 auto", padding: "60px 32px 0" }}>
+          <div style={{ maxWidth: chatWidth, margin: "0 auto", padding: "60px 32px 0", transition: "max-width 0.35s ease" }}>
 
             {messages.length === 0 && (
               <div style={{ animation: "fadeUp 0.6s ease both" }}>
@@ -1634,21 +1753,9 @@ export default function IntegratedConcierge() {
                           );
                         })()}
 
-                        {!m.isTyping && m.content.flightSearch && !m.flightData && (() => {
-                          // Only show FlightSearchPanel for trip-planning replies.
-                          // When flightData exists it's a flight-status response — the backend
-                          // also sends a junk flightSearch (YOU→YOU) in that case, so we skip it.
-                          const fs = m.content.flightSearch;
-                          const isJunk = (s: string) => {
-                            if (!s) return true;
-                            const u = s.toUpperCase().trim();
-                            // Valid IATA is exactly 3 alpha chars — anything else is a placeholder
-                            return !/^[A-Z]{3}$/.test(u);
-                          };
-                          if (isJunk(fs.origin?.iata) || isJunk(fs.destination?.iata)) return null;
-                          if (fs.origin.iata === fs.destination.iata) return null;
-                          return <FlightSearchPanel data={fs} />;
-                        })()}
+                        {!m.isTyping && m.content.flightSearch && !m.flightData && i === lastFlightSearchIdx && (
+                          <FlightSearchPanel data={m.content.flightSearch} />
+                        )}
 
                         {m.content.hotels && m.content.hotels.length > 0 && (
                           <div style={{ marginBottom: "40px" }}>
@@ -1763,7 +1870,7 @@ export default function IntegratedConcierge() {
 
         {videos.length > 0 && (
           <div style={{ position: "absolute", bottom: "148px", left: 0, right: 0, zIndex: 20 }}>
-            <div style={{ maxWidth: "860px", margin: "0 auto", padding: "0 32px" }}>
+            <div style={{ maxWidth: chatWidth, margin: "0 auto", padding: "0 32px", transition: "max-width 0.35s ease" }}>
               <div style={{
                 background: "rgba(255,255,255,0.92)", backdropFilter: "blur(16px)",
                 border: `1px solid ${T.border}`, borderRadius: "16px",
@@ -1791,8 +1898,8 @@ export default function IntegratedConcierge() {
         )}
 
         {/* ── Input bar ── */}
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "24px 32px", zIndex: 30, pointerEvents: "none" }}>
-          <div style={{ maxWidth: "860px", margin: "0 auto", pointerEvents: "auto" }}>
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "24px 32px", zIndex: 100, pointerEvents: "none", background: isDark ? "rgba(18,18,20,0.98)" : "rgba(250,250,247,0.98)", backdropFilter: "blur(20px)", borderTop: `1px solid ${T.border}` }}>
+          <div style={{ maxWidth: chatWidth, margin: "0 auto", pointerEvents: "auto", transition: "max-width 0.35s ease" }}>
             <div style={{
               display: "flex", alignItems: "center",
               background: isDark ? "rgba(30,30,32,0.95)" : "rgba(255,255,255,0.95)", backdropFilter: "blur(20px)",

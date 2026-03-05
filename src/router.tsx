@@ -108,6 +108,9 @@ import ConciergePage from "./pages/concierge/ConciergePage";
 
 import Splash from "./pages/Splash";
 
+// ✅ SBT — Self Booking Tool
+import SBTFlightSearch from "./pages/sbt/SBTFlightSearch";
+
 /* -------------------------------------------------------------------------- */
 /* Route selectors                                                            */
 /* -------------------------------------------------------------------------- */
@@ -589,6 +592,16 @@ const router = createBrowserRouter([
         element: (
           <Protected roles={["Admin", "SuperAdmin", "HR"]}>
             <AdminProposalByRequest />
+          </Protected>
+        ),
+      },
+
+      /* -------- ✅ SBT — Self Booking Tool -------- */
+      {
+        path: "sbt/flights",
+        element: (
+          <Protected>
+            <SBTFlightSearch />
           </Protected>
         ),
       },
