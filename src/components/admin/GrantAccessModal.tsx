@@ -45,7 +45,7 @@ export default function GrantAccessModal({ open, onClose, onGranted }: Props) {
     setPassword("");
     setRole("EMPLOYEE");
     api
-      .get("/admin/onboarded-without-access")
+      .get("/users/admin/onboarded-without-access")
       .then((data: any) => {
         const list = data?.data ?? data ?? [];
         setCandidates(list);
@@ -83,7 +83,7 @@ export default function GrantAccessModal({ open, onClose, onGranted }: Props) {
     setLoading(true);
     setError("");
     try {
-      await api.post("/admin/grant-access", {
+      await api.post("/users/admin/grant-access", {
         userId: selected._id,
         role,
         password,

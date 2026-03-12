@@ -4,6 +4,7 @@ import api from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import AddStaffModal from "../../components/admin/AddStaffModal";
 import GrantAccessModal from "../../components/admin/GrantAccessModal";
+import { Users, Settings, UserPlus, Shield } from "lucide-react";
 
 /* =========================================================
  * Small utils
@@ -118,6 +119,9 @@ type CustomerMember = {
   lastInviteAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  userId?: string | null;
+  sbtEnabled?: boolean;
+  sbtRole?: string | null;
 };
 
 type BusinessOption = {
@@ -162,12 +166,33 @@ const ui = {
     "h-8 rounded-full border border-zinc-200 bg-white px-3 text-[11px] font-semibold text-zinc-800 hover:bg-zinc-50",
 };
 
+type TabKey = "users" | "settings" | "create" | "admin";
+
 export default function UserCreation() {
   const { user } = useAuth();
   const canUseAdminConsole = useMemo(
     () => isStaffPrivileged(user as any),
     [user]
   );
+  const isWorkspaceLeader = useMemo(() => {
+    const r = collectRoles(user as any);
+    return r.includes("WORKSPACELEADER");
+  }, [user]);
+
+  /* =========================================================
+   * Tab state
+   * ======================================================= */
+  const [activeTab, setActiveTab] = useState<TabKey>("users");
+
+  // If WORKSPACE_LEADER ends up on a staff-only tab, snap back to "users"
+  useEffect(() => {
+    if (!canUseAdminConsole && !isWorkspaceLeader && activeTab === "settings") {
+      setActiveTab("users");
+    }
+    if (!canUseAdminConsole && activeTab === "admin") {
+      setActiveTab("users");
+    }
+  }, [canUseAdminConsole, isWorkspaceLeader, activeTab]);
 
   /* =========================================================
    * Staff-only: Business selector + domain selector
@@ -181,6 +206,7 @@ export default function UserCreation() {
   const [bizSearching, setBizSearching] = useState(false);
   const [bizErr, setBizErr] = useState<string | null>(null);
   const [bizOptions, setBizOptions] = useState<BusinessOption[]>([]);
+  const bizDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // helper: append ?customerId for staff actions (no env-based default ids)
   function withCustomerId(url: string) {
@@ -207,6 +233,14 @@ export default function UserCreation() {
 
   const [allowSavedToast, setAllowSavedToast] = useState<string | null>(null);
 
+  // Access mode state
+  const [accessMode, setAccessMode] = useState<"INVITE_ONLY" | "COMPANY_DOMAIN" | "EMAIL_ALLOWLIST">("INVITE_ONLY");
+  const [accessDomainInput, setAccessDomainInput] = useState("");
+  const [accessDomains, setAccessDomains] = useState<string[]>([]);
+  const [accessEmails, setAccessEmails] = useState<string[]>([]);
+  const [accessModeBusy, setAccessModeBusy] = useState(false);
+  const [accessModeErr, setAccessModeErr] = useState<string | null>(null);
+
   /* =========================================================
    * Customer module data
    * ======================================================= */
@@ -222,6 +256,11 @@ export default function UserCreation() {
   const [cRole, setCRole] = useState<MemberRole>("REQUESTER");
   const [cPhone, setCPhone] = useState("");
   const [cDept, setCDept] = useState("");
+
+  // SBT fields
+  const [cSbtRole, setCSbtRole] = useState<string>("");
+  const [cSbtBookerId, setCSbtBookerId] = useState<string>("");
+  const [availableBookers, setAvailableBookers] = useState<any[]>([]);
 
   // Reporting to (Approver) — used when REQUESTER
   const [cApproverEmail, setCApproverEmail] = useState<string>(""); // "" => auto (workspace default)
@@ -248,6 +287,9 @@ export default function UserCreation() {
   const [showAddStaff, setShowAddStaff] = useState(false);
   const [showGrantAccess, setShowGrantAccess] = useState(false);
 
+  // Travel mode
+  const [travelModeBusy, setTravelModeBusy] = useState(false);
+
   // Admin credential console (optional)
   const [aEmail, setAEmail] = useState("");
   const [aPassword, setAPassword] = useState("");
@@ -259,6 +301,19 @@ export default function UserCreation() {
   const [q, setQ] = useState("");
   const [roleFilter, setRoleFilter] = useState<"ALL" | MemberRole>("ALL");
   const [activeOnly, setActiveOnly] = useState(false);
+
+  /* =========================================================
+   * Toast auto-dismiss
+   * ======================================================= */
+  useEffect(() => {
+    if (!toast && !actionErr && !allowSavedToast) return;
+    const t = setTimeout(() => {
+      setToast(null);
+      setActionErr(null);
+      setAllowSavedToast(null);
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [toast, actionErr, allowSavedToast]);
 
   /* =========================================================
    * Allowlist fetch/save (prefers dedicated endpoint; falls back to workspace/config)
@@ -571,6 +626,47 @@ export default function UserCreation() {
     }
   }
 
+  async function handleSaveAccessMode() {
+    setAccessModeBusy(true);
+    setAccessModeErr(null);
+    try {
+      const body: any = { accessMode };
+      if (accessMode === "COMPANY_DOMAIN") body.allowedDomains = accessDomains;
+      if (accessMode === "EMAIL_ALLOWLIST") body.allowedEmails = accessEmails;
+
+      const res = unwrap(
+        await api.patch(withCustomerId("/customer/users/workspace/access-mode"), body)
+      );
+      setToast("Access settings saved");
+      if (res?.allowedDomains) setAccessDomains(res.allowedDomains);
+      if (res?.allowedEmails) setAccessEmails(res.allowedEmails);
+    } catch (e: any) {
+      setAccessModeErr(extractErrorMessage(e));
+    } finally {
+      setAccessModeBusy(false);
+    }
+  }
+
+  function handleAddAccessDomain() {
+    const d = accessDomainInput.trim().toLowerCase().replace(/^@/, "");
+    if (!d) return;
+    // Client-side generic domain check
+    const GENERIC = ["gmail.com","hotmail.com","yahoo.com","outlook.com","icloud.com","protonmail.com","live.com","msn.com","rediffmail.com","ymail.com","aol.com","zoho.com","mail.com","inbox.com","gmx.com"];
+    if (GENERIC.includes(d)) {
+      setAccessModeErr(`"${d}" is a generic email domain. Use Email Allowlist mode instead.`);
+      return;
+    }
+    if (!accessDomains.includes(d)) {
+      setAccessDomains([...accessDomains, d]);
+    }
+    setAccessDomainInput("");
+    setAccessModeErr(null);
+  }
+
+  function removeAccessDomain(domain: string) {
+    setAccessDomains(accessDomains.filter(d => d !== domain));
+  }
+
   /* =========================================================
    * Whitelist gating decision (frontend side)
    * ======================================================= */
@@ -579,6 +675,7 @@ export default function UserCreation() {
 
   const isWhitelistedForUserCreation = useMemo(() => {
     if (canUseAdminConsole) return true; // staff bypass
+    if (isWorkspaceLeader) return true; // workspace leader bypass
     const emails = allowlist?.emails || [];
     const domains = allowlist?.domains || [];
 
@@ -594,7 +691,7 @@ export default function UserCreation() {
     )
       return true;
     return false;
-  }, [allowlist, myEmail, myDomain, canUseAdminConsole]);
+  }, [allowlist, myEmail, myDomain, canUseAdminConsole, isWorkspaceLeader]);
 
   /* =========================================================
    * Business search (best-effort, supports unknown backend shapes)
@@ -643,10 +740,19 @@ export default function UserCreation() {
     return (
       normStr(raw?.name) ||
       normStr(raw?.companyName) ||
+      normStr(raw?.businessName) ||
+      normStr(raw?.inviteeName) ||
+      normStr(raw?.fullName) ||
+      normStr(raw?.contactName) ||
       normStr(raw?.title) ||
       normStr(raw?.payload?.name) ||
       normStr(raw?.payload?.companyName) ||
-      "Unnamed Business"
+      normStr(raw?.payload?.businessName) ||
+      normStr(raw?.payload?.inviteeName) ||
+      normStr(raw?.payload?.fullName) ||
+      normStr(raw?.payload?.title) ||
+      normStr(raw?.email) ||
+      "Unknown Business"
     );
   }
 
@@ -654,9 +760,9 @@ export default function UserCreation() {
     return String(raw?._id || raw?.id || raw?.customerId || "").trim();
   }
 
-  async function searchBusinesses(query: string) {
+  async function searchBusinesses(query: string, preload = false) {
     const qq = normStr(query);
-    if (!qq || qq.length < 2) {
+    if (!preload && (!qq || qq.length < 2)) {
       setBizOptions([]);
       return;
     }
@@ -664,42 +770,15 @@ export default function UserCreation() {
     setBizSearching(true);
     setBizErr(null);
 
-    const endpoints = [
-      `/admin/masterdata/search?type=business&query=${encodeURIComponent(qq)}`,
-      `/admin/masterdata/search?type=customer&query=${encodeURIComponent(qq)}`,
-      `/admin/masterdata?type=business&search=${encodeURIComponent(qq)}`,
-      `/masterdata/search?type=business&query=${encodeURIComponent(qq)}`,
-      `/masterdata?type=business&search=${encodeURIComponent(qq)}`,
-      `/admin/businesses/search?query=${encodeURIComponent(qq)}`,
-    ];
-
     try {
-      let rawRows: any[] | null = null;
+      const res = unwrap(
+        await api.get(`/customer/users/workspace/search?q=${encodeURIComponent(qq)}`)
+      );
+      const rawRows: any[] = Array.isArray(res?.rows) ? res.rows : [];
 
-      for (const url of endpoints) {
-        try {
-          const res = unwrap(await api.get(url));
-          const rows =
-            (Array.isArray(res) ? res : null) ||
-            (Array.isArray(res?.rows) ? res.rows : null) ||
-            (Array.isArray(res?.items) ? res.items : null) ||
-            (Array.isArray(res?.data) ? res.data : null) ||
-            (Array.isArray(res?.data?.rows) ? res.data.rows : null);
-
-          if (rows && rows.length) {
-            rawRows = rows;
-            break;
-          }
-        } catch {
-          // try next endpoint
-        }
-      }
-
-      if (!rawRows) {
+      if (!rawRows.length) {
         setBizOptions([]);
-        setBizErr(
-          "No business search endpoint returned results (use manual Business ID input)."
-        );
+        setBizErr(preload ? "No businesses yet" : "No businesses found for that query (try manual Business ID input).");
         return;
       }
 
@@ -759,17 +838,25 @@ export default function UserCreation() {
       setCustomerAllowed(true);
       setRows(Array.isArray(res?.rows) ? res.rows : []);
       setWorkspace(res?.workspace || null);
+      // Populate access mode from workspace
+      const wsData = res?.workspace;
+      if (wsData) {
+        setAccessMode(wsData.accessMode || "INVITE_ONLY");
+        setAccessDomains(wsData.allowedDomains || wsData.userCreationAllowlistDomains || []);
+        setAccessEmails(wsData.allowedEmails || wsData.userCreationAllowlistEmails || []);
+      }
       setLoadErr(null);
     } catch (e: any) {
       const msg = extractErrorMessage(e);
 
       if (canUseAdminConsole && !normStr(selectedCustomerId)) {
+        // Expected initial state for admins — no customer selected yet.
+        // Don't treat this as an error; just clear data and let the
+        // tab shell render with the "search a company" empty prompt.
         setCustomerAllowed(false);
         setRows([]);
         setWorkspace(null);
-        setLoadErr(
-          "Please set Customer ID first (Business MasterData _id) to load the workspace."
-        );
+        setLoadErr(null);
       } else {
         setCustomerAllowed(false);
         setRows([]);
@@ -781,10 +868,21 @@ export default function UserCreation() {
     }
   }
 
-  // initial load
+  async function fetchBookers() {
+    try {
+      const res = unwrap(await api.get(withCustomerId("/customer/users/workspace/available-bookers")));
+      setAvailableBookers(Array.isArray(res?.bookers) ? res.bookers : []);
+    } catch {
+      setAvailableBookers([]);
+    }
+  }
+
+  // initial load — skip for admins until they pick a customer
   useEffect(() => {
+    if (canUseAdminConsole && !normStr(selectedCustomerId)) return;
     reload();
     fetchAllowlist();
+    fetchBookers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -794,10 +892,11 @@ export default function UserCreation() {
     if (!normStr(selectedCustomerId)) return;
     reload();
     fetchAllowlist();
+    fetchBookers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustomerId, canUseAdminConsole]);
 
-  // Keep domain list updated from workspace + allowlist if business didn’t provide
+  // Keep domain list updated from workspace + allowlist if business didn't provide
   const availableDomains = useMemo(() => {
     const fromBiz = (selectedBusiness?.domains || [])
       .map((d) => String(d || "").trim().toLowerCase())
@@ -838,7 +937,7 @@ export default function UserCreation() {
 
   const approverOptions = useMemo(() => {
     const list = rows
-      .filter((r) => r.role === "APPROVER" && r.isActive !== false)
+      .filter((r) => (r.role === "APPROVER" || r.role === "WORKSPACE_LEADER") && r.isActive !== false)
       .map((r) => ({
         email: normEmail(r.email),
         name: normStr(r.name) || normEmail(r.email),
@@ -893,7 +992,7 @@ export default function UserCreation() {
     setBulkResult(null);
 
     if (!isWhitelistedForUserCreation) {
-      setActionErr("Your email/domain isn’t whitelisted for User Creation. Contact HR/Admin.");
+      setActionErr("Your email/domain isn't whitelisted for User Creation. Contact HR/Admin.");
       return;
     }
 
@@ -902,7 +1001,7 @@ export default function UserCreation() {
       return;
     }
 
-    if (!customerAllowed && !canUseAdminConsole) {
+    if (!customerAllowed && !canUseAdminConsole && !isWorkspaceLeader) {
       setActionErr("You are not authorized to manage workspace users.");
       return;
     }
@@ -950,6 +1049,8 @@ export default function UserCreation() {
         setAsDefaultApprover: !!cDefaultApprover,
         active: !!cActive,
         sendInvite: !!cInvite,
+        ...(cSbtRole ? { sbtRole: cSbtRole } : {}),
+        ...(cSbtBookerId ? { sbtAssignedBookerId: cSbtBookerId } : {}),
       };
 
       if (cRole === "REQUESTER") {
@@ -986,6 +1087,8 @@ export default function UserCreation() {
       setCDefaultApprover(false);
       setCActive(true);
       setCInvite(true);
+      setCSbtRole("");
+      setCSbtBookerId("");
 
       setCSetPassword(false);
       setCPassword("");
@@ -1002,7 +1105,7 @@ export default function UserCreation() {
     setToast(null);
 
     if (!isWhitelistedForUserCreation) {
-      setActionErr("Your email/domain isn’t whitelisted for User Creation. Contact HR/Admin.");
+      setActionErr("Your email/domain isn't whitelisted for User Creation. Contact HR/Admin.");
       return;
     }
     if (canUseAdminConsole && !normStr(selectedCustomerId)) {
@@ -1025,7 +1128,7 @@ export default function UserCreation() {
     setToast(null);
 
     if (!isWhitelistedForUserCreation) {
-      setActionErr("Your email/domain isn’t whitelisted for User Creation. Contact HR/Admin.");
+      setActionErr("Your email/domain isn't whitelisted for User Creation. Contact HR/Admin.");
       return;
     }
     if (canUseAdminConsole && !normStr(selectedCustomerId)) {
@@ -1039,6 +1142,51 @@ export default function UserCreation() {
       await reload();
     } catch (e: any) {
       setActionErr(extractErrorMessage(e));
+    }
+  }
+
+  async function onToggleSbt(row: CustomerMember) {
+    if (!row.userId) {
+      setActionErr("No linked user account found for this member. SBT cannot be toggled.");
+      return;
+    }
+    const prev = row.sbtEnabled ?? false;
+    const next = !prev;
+
+    // Optimistic update
+    setRows((rs) =>
+      rs.map((r) => (r._id === row._id ? { ...r, sbtEnabled: next } : r))
+    );
+
+    try {
+      await api.patch(`/users/admin/users/${row.userId}/sbt`, { sbtEnabled: next });
+      setToast(next ? "SBT enabled." : "SBT disabled.");
+    } catch (e: any) {
+      // Revert on error
+      setRows((rs) =>
+        rs.map((r) => (r._id === row._id ? { ...r, sbtEnabled: prev } : r))
+      );
+      setActionErr(extractErrorMessage(e));
+    }
+  }
+
+  async function onSetTravelMode(mode: "SBT" | "APPROVAL_FLOW") {
+    if (!workspace || workspace.travelMode === mode) return;
+    const prev = workspace.travelMode;
+    setTravelModeBusy(true);
+    setWorkspace((w: any) => ({ ...w, travelMode: mode }));
+    try {
+      await api.patch(withCustomerId("/customer/users/workspace/travel-mode"), {
+        travelMode: mode,
+        customerId: normStr(selectedCustomerId) || undefined,
+      });
+      setToast(`Travel mode set to ${mode === "SBT" ? "SBT" : "Approval Flow"}.`);
+      await reload();
+    } catch (e: any) {
+      setWorkspace((w: any) => ({ ...w, travelMode: prev }));
+      setActionErr(extractErrorMessage(e));
+    } finally {
+      setTravelModeBusy(false);
     }
   }
 
@@ -1088,7 +1236,7 @@ export default function UserCreation() {
     setBulkResult(null);
 
     if (!isWhitelistedForUserCreation) {
-      setActionErr("Your email/domain isn’t whitelisted for User Creation. Contact HR/Admin.");
+      setActionErr("Your email/domain isn't whitelisted for User Creation. Contact HR/Admin.");
       return;
     }
     if (canUseAdminConsole && !normStr(selectedCustomerId)) {
@@ -1166,7 +1314,7 @@ export default function UserCreation() {
               <div>
                 <div className="text-[11px] tracking-[0.22em] uppercase text-zinc-500">Access</div>
                 <div className="mt-1 text-lg font-semibold text-zinc-900">Access restricted</div>
-                <div className={ui.hint}>You don’t have permission to manage users.</div>
+                <div className={ui.hint}>You don't have permission to manage users.</div>
               </div>
               <span className={`${ui.chip} border-amber-200 bg-amber-50 text-amber-800`}>Restricted</span>
             </div>
@@ -1182,8 +1330,34 @@ export default function UserCreation() {
     );
   }
 
-  const showRestrictedByAllowlist = !canUseAdminConsole && !isWhitelistedForUserCreation;
+  const showRestrictedByAllowlist = !canUseAdminConsole && !isWorkspaceLeader && !isWhitelistedForUserCreation;
 
+  /* =========================================================
+   * Tab definitions
+   * ======================================================= */
+  const tabs: { key: TabKey; label: string; icon: React.ReactNode; show: boolean }[] = [
+    { key: "users", label: "Users", icon: <Users size={14} />, show: true },
+    { key: "settings", label: "Settings", icon: <Settings size={14} />, show: canUseAdminConsole || isWorkspaceLeader },
+    { key: "create", label: "Create", icon: <UserPlus size={14} />, show: true },
+    { key: "admin", label: "Admin Tools", icon: <Shield size={14} />, show: canUseAdminConsole },
+  ];
+
+  /* =========================================================
+   * Empty state placeholder
+   * ======================================================= */
+  const emptyPrompt = (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="rounded-full bg-zinc-100 p-4 mb-4">
+        <Users size={28} className="text-zinc-400" />
+      </div>
+      <div className="text-sm font-semibold text-zinc-700">No workspace loaded</div>
+      <div className="mt-1 text-xs text-zinc-500">Search a company above to load its workspace.</div>
+    </div>
+  );
+
+  /* =========================================================
+   * JSX
+   * ======================================================= */
   return (
     <div className="min-h-[70vh] bg-gradient-to-b from-[#00477f]/[0.06] via-white to-[#d06549]/[0.05]">
       <AddStaffModal
@@ -1196,8 +1370,10 @@ export default function UserCreation() {
         onClose={() => setShowGrantAccess(false)}
         onGranted={() => setShowGrantAccess(false)}
       />
+
       <div className="mx-auto max-w-7xl p-4 sm:p-6">
-        {/* Header */}
+
+        {/* ═══════ PAGE HEADER ═══════ */}
         <div className={`mb-5 overflow-hidden rounded-[30px] border border-zinc-200/70 bg-white/70 backdrop-blur shadow-sm`}>
           <div className="bg-gradient-to-r from-[#00477f]/10 via-white to-[#d06549]/10 p-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -1205,13 +1381,11 @@ export default function UserCreation() {
                 <div className="text-[11px] tracking-[0.22em] uppercase text-zinc-500">Access</div>
                 <div className="mt-1 text-2xl font-semibold text-zinc-900">User Creation</div>
                 <div className="mt-1 text-sm text-zinc-600">
-                  Manage workspace users (Requester / Approver / Workspace Leader), invitations, bulk imports, and allowlist controls.
+                  Manage workspace users, invitations, bulk imports, and allowlist controls.
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`${ui.chip} border-zinc-200 bg-white text-zinc-800`}>Secure • Auditable • Workspace-scoped</span>
-
                 <span
                   className={`${ui.chip} ${
                     customerAllowed
@@ -1219,12 +1393,12 @@ export default function UserCreation() {
                       : "border-amber-200 bg-amber-50 text-amber-800"
                   }`}
                 >
-                  {customerAllowed ? "Workspace Loaded" : "Workspace Not Loaded Yet"}
+                  {customerAllowed ? "Workspace Loaded" : "Not Loaded"}
                 </span>
 
                 {canUseAdminConsole && (
                   <span className={`${ui.chip} border-[#00477f]/20 bg-[#00477f]/10 text-[#00477f]`}>
-                    Staff Mode • Business Selector Enabled
+                    Staff Mode
                   </span>
                 )}
 
@@ -1233,9 +1407,6 @@ export default function UserCreation() {
                     onClick={() => setShowGrantAccess(true)}
                     className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#00477f] px-4 text-[12px] font-semibold text-[#00477f] hover:bg-[#00477f]/5 transition-colors"
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                    </svg>
                     Grant Access
                   </button>
                 )}
@@ -1245,137 +1416,95 @@ export default function UserCreation() {
                     onClick={() => setShowAddStaff(true)}
                     className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#00477f] px-4 text-[12px] font-semibold text-white hover:bg-[#003d6e] transition-colors"
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
                     Add Staff
                   </button>
                 )}
               </div>
             </div>
-
-            {/* Quick stats */}
-            {customerAllowed && !showRestrictedByAllowlist && (
-              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-                {[
-                  ["Total", stats.total],
-                  ["Active", stats.active],
-                  ["Leaders", stats.leaders],
-                  ["Approvers", stats.approvers],
-                  ["Requesters", stats.requesters],
-                  ["Default", stats.defaultApprovers],
-                ].map(([k, v]) => (
-                  <div key={String(k)} className="rounded-2xl border border-zinc-200/70 bg-white/70 px-4 py-3">
-                    <div className="text-[10px] tracking-[0.22em] uppercase text-zinc-500">{k}</div>
-                    <div className="mt-1 text-lg font-semibold text-zinc-900">{String(v)}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Load error */}
-            {loadErr && !customerAllowed && (
-              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-900">
-                {loadErr}
-              </div>
-            )}
-
-            {allowSavedToast && (
-              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[12px] text-emerald-900">
-                {allowSavedToast}
-              </div>
-            )}
-
-            {toast && (
-              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[12px] text-emerald-900">
-                {toast}
-              </div>
-            )}
-
-            {actionErr && (
-              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-800">
-                {actionErr}
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Staff: Business Selector + Domain Selector + Allowlist Editor */}
+        {/* ═══════ COMPANY SEARCH BAR ═══════ */}
         {canUseAdminConsole && (
-          <div className={`mb-6 ${ui.card} ${ui.cardPad}`}>
-            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-              <div>
-                <div className="text-[11px] tracking-[0.22em] uppercase text-zinc-500">Internal Team</div>
-                <div className="mt-1 text-lg font-semibold text-zinc-900">Business selector + allowlist</div>
-                <div className={ui.hint}>
-                  Select a Business (MasterData _id) to load its workspace. Then configure allowlist domains/emails to enable customer-side user creation.
-                </div>
-              </div>
-              <span className={`${ui.chip} border-zinc-200 bg-zinc-50 text-zinc-700`}>HR/Admin/SuperAdmin</span>
-            </div>
-
-            {/* Selector row */}
-            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <div className={`relative z-20 mb-5 ${ui.card} ${ui.cardPad}`}>
+            <div className="flex flex-col gap-3 md:flex-row md:items-start">
               {/* Search */}
-              <div className="lg:col-span-1 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
-                <div className="text-[11px] font-semibold text-zinc-800">Business Search</div>
-                <div className="mt-1 text-xs text-zinc-600">Type a name/email/domain (best-effort search) then pick.</div>
+              <div className="flex-1 relative">
+                <div className={ui.label}>Business Search</div>
+                <div className="relative mt-1">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        value={bizQ}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setBizQ(v);
+                          if (bizDebounceRef.current) clearTimeout(bizDebounceRef.current);
+                          bizDebounceRef.current = setTimeout(() => {
+                            if (normStr(v).length >= 2) searchBusinesses(v);
+                            else setBizOptions([]);
+                          }, 400);
+                        }}
+                        onFocus={() => {
+                          if (!normStr(bizQ) && !bizOptions.length) searchBusinesses("", true);
+                        }}
+                        onKeyDown={(e) => e.key === "Enter" && searchBusinesses(bizQ)}
+                        placeholder="Type company name to search..."
+                        className={ui.input}
+                      />
+                      {bizSearching && (
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-[#00477f]" />
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className={ui.btnGhost}
+                      disabled={bizSearching || normStr(bizQ).length < 2}
+                      onClick={() => searchBusinesses(bizQ)}
+                    >
+                      {bizSearching ? "..." : "Search"}
+                    </button>
+                  </div>
 
-                <div className="mt-3 flex gap-2">
-                  <input value={bizQ} onChange={(e) => setBizQ(e.target.value)} placeholder="Search business…" className={ui.input} />
-                  <button
-                    type="button"
-                    className={ui.btnGhost}
-                    disabled={bizSearching || normStr(bizQ).length < 2}
-                    onClick={() => searchBusinesses(bizQ)}
-                  >
-                    {bizSearching ? "…" : "Search"}
-                  </button>
+                  {bizOptions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-2xl border border-zinc-200 bg-white shadow-lg max-h-52 overflow-auto">
+                      {bizOptions.map((b) => {
+                        const isSel = selectedBusiness?.id === b.id;
+                        return (
+                          <button
+                            key={b.id}
+                            type="button"
+                            className={`w-full text-left px-3 py-2.5 hover:bg-[#00477f]/[0.04] cursor-pointer ${isSel ? "bg-[#00477f]/[0.06]" : ""}`}
+                            onClick={() => { selectBusiness(b); setBizOptions([]); }}
+                          >
+                            <div className="font-semibold text-zinc-900 text-[12px]">{b.name}</div>
+                            <div className="text-zinc-500 text-[11px] font-mono">
+                              {b.id}
+                              {!!b.domains?.length && (
+                                <span className="ml-2">{b.domains.slice(0, 2).join(", ")}{b.domains.length > 2 ? "..." : ""}</span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {bizErr && (
-                  <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-                    {bizErr}
-                  </div>
+                  <div className="mt-2 text-[11px] text-amber-800">{bizErr}</div>
                 )}
-
-                {bizOptions.length > 0 && (
-                  <div className="mt-3 max-h-52 overflow-auto rounded-2xl border border-zinc-200 bg-white">
-                    {bizOptions.map((b) => {
-                      const active = selectedBusiness?.id === b.id;
-                      return (
-                        <button
-                          key={b.id}
-                          type="button"
-                          className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#00477f]/[0.04] ${
-                            active ? "bg-[#00477f]/[0.06]" : ""
-                          }`}
-                          onClick={() => selectBusiness(b)}
-                        >
-                          <div className="font-semibold text-zinc-900">{b.name}</div>
-                          <div className="text-zinc-600">
-                            <span className="font-mono">{b.id}</span>
-                            {!!b.domains?.length && (
-                              <span>
-                                {" "}
-                                • {b.domains.slice(0, 2).join(", ")}
-                                {b.domains.length > 2 ? "…" : ""}
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
+                {!selectedBusiness && !bizErr && (
+                  <div className="mt-1 text-[11px] text-zinc-400">
+                    Type a company name to search, or paste a Business ID on the right
                   </div>
                 )}
               </div>
 
               {/* Manual ID */}
-              <div className="lg:col-span-1 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
-                <div className="text-[11px] font-semibold text-zinc-800">Business MasterData _id</div>
-                <div className="mt-1 text-xs text-zinc-600">Paste/enter exact Business ID (required if you don’t use search).</div>
-
-                <div className="mt-3 grid gap-2">
+              <div className="w-full md:w-64">
+                <div className={ui.label}>Manual Business ID</div>
+                <div className="mt-1 flex gap-2">
                   <input
                     value={selectedCustomerId}
                     onChange={(e) => {
@@ -1383,681 +1512,815 @@ export default function UserCreation() {
                       setSelectedCustomerId(v);
                       if (!v) setSelectedBusiness(null);
                     }}
-                    placeholder="e.g., 675a…"
+                    placeholder="e.g., 675a..."
                     className={ui.input}
                   />
-
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" className={ui.btnGhost} onClick={() => { reload(); fetchAllowlist(); }}>
-                      Load Workspace
-                    </button>
-                    <button
-                      type="button"
-                      className={ui.btnGhost}
-                      onClick={() => {
-                        setSelectedCustomerId("");
-                        setSelectedBusiness(null);
-                        setSelectedDomain("");
-                        setAllowlist(null);
-                        setAllowEmailsText("");
-                        setAllowDomainsText("");
-                        setRows([]);
-                        setWorkspace(null);
-                        setCustomerAllowed(false);
-                        setLoadErr("Please set Customer ID first (Business MasterData _id) to load the workspace.");
-                      }}
-                    >
-                      Clear
-                    </button>
-                  </div>
+                  <button type="button" className={ui.btnGhost} onClick={() => { reload(); fetchAllowlist(); }}>
+                    Load
+                  </button>
                 </div>
               </div>
+            </div>
 
-              {/* Domain selector */}
-              <div className="lg:col-span-1 rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
-                <div className="text-[11px] font-semibold text-zinc-800">Domain selector</div>
-                <div className="mt-1 text-xs text-zinc-600">Optional helper (for quick allowlist entry and clarity).</div>
-
-                <div className="mt-3 grid gap-2">
-                  <select
-                    value={selectedDomain}
-                    onChange={(e) => setSelectedDomain(String(e.target.value || "").trim().toLowerCase())}
-                    className={ui.select}
-                    disabled={availableDomains.length === 0}
-                  >
-                    {availableDomains.length === 0 ? (
-                      <option value="">No domains detected yet</option>
-                    ) : (
-                      availableDomains.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))
-                    )}
-                  </select>
-
+            {/* Selected company chip */}
+            {(selectedBusiness || normStr(selectedCustomerId)) && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#00477f]/10 text-[#00477f] px-3 py-1 text-[12px] font-semibold">
+                  {selectedBusiness?.name || selectedCustomerId}
                   <button
                     type="button"
-                    className={ui.btnGhost}
-                    disabled={!selectedDomain || allowBusy}
                     onClick={() => {
-                      const next = new Set(normalizeDomainList(allowDomainsText));
-                      if (selectedDomain) next.add(selectedDomain);
-                      setAllowDomainsText(Array.from(next).join("\n"));
+                      setSelectedCustomerId("");
+                      setSelectedBusiness(null);
+                      setSelectedDomain("");
+                      setAllowlist(null);
+                      setAllowEmailsText("");
+                      setAllowDomainsText("");
+                      setRows([]);
+                      setWorkspace(null);
+                      setCustomerAllowed(false);
+                      setLoadErr("Please set Customer ID first (Business MasterData _id) to load the workspace.");
                     }}
+                    className="ml-0.5 text-[#00477f]/60 hover:text-[#00477f]"
                   >
-                    Add selected domain to allowlist
+                    &times;
                   </button>
-                </div>
+                </span>
+                {selectedBusiness && selectedCustomerId && (
+                  <span className="text-[10px] font-mono text-zinc-500">{selectedCustomerId}</span>
+                )}
               </div>
-            </div>
+            )}
 
-            {/* Allowlist editor */}
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] tracking-[0.22em] uppercase text-zinc-500">Allowlist</div>
-                    <div className="mt-1 text-base font-semibold text-zinc-900">Domains</div>
-                    <div className={ui.hint}>One per line (no @). Example: helloviza.com</div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className={ui.btnPrimary}
-                    disabled={allowBusy || !normStr(selectedCustomerId)}
-                    onClick={saveAllowlistDomains}
-                    title={!normStr(selectedCustomerId) ? "Set Customer ID to load workspace" : "Save domains"}
-                  >
-                    {allowSavingDomains ? "Saving…" : "Save Domains"}
-                  </button>
-                </div>
-
-                <textarea
-                  value={allowDomainsText}
-                  onChange={(e) => setAllowDomainsText(e.target.value)}
-                  className={`${ui.textarea} mt-3`}
-                  placeholder={"helloviza.com\nplumtrips.com"}
-                  disabled={allowBusy}
-                />
-              </div>
-
-              <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] tracking-[0.22em] uppercase text-zinc-500">Allowlist</div>
-                    <div className="mt-1 text-base font-semibold text-zinc-900">Emails</div>
-                    <div className={ui.hint}>One per line. Example: approver@helloviza.com</div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className={ui.btnPrimary}
-                    disabled={allowBusy || !normStr(selectedCustomerId)}
-                    onClick={saveAllowlistEmails}
-                    title={!normStr(selectedCustomerId) ? "Set Customer ID to load workspace" : "Save emails"}
-                  >
-                    {allowSavingEmails ? "Saving…" : "Save Emails"}
-                  </button>
-                </div>
-
-                <textarea
-                  value={allowEmailsText}
-                  onChange={(e) => setAllowEmailsText(e.target.value)}
-                  className={`${ui.textarea} mt-3`}
-                  placeholder={"approver@helloviza.com\nlead@plumtrips.com"}
-                  disabled={allowBusy}
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                className={ui.btnGhost}
-                disabled={allowLoading || !normStr(selectedCustomerId)}
-                onClick={fetchAllowlist}
-              >
-                {allowLoading ? "Loading…" : "Refresh allowlist"}
-              </button>
-
-              {allowErr && (
-                <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800">
-                  {allowErr}
-                </div>
-              )}
-
-              {allowlist && (
-                <div className="text-[12px] text-zinc-700">
-                  <span className="font-semibold">Updated by:</span> {allowlist.updatedBy || "-"}{" "}
-                  <span className="mx-2">•</span>
-                  <span className="font-semibold">Updated at:</span> {allowlist.updatedAt || "-"}
-                </div>
-              )}
-            </div>
+            {loadErr && !customerAllowed && (
+              <div className="mt-3 text-[11px] text-amber-800">{loadErr}</div>
+            )}
           </div>
         )}
 
         {/* Customer-side allowlist restriction card */}
         {showRestrictedByAllowlist && (
-          <div className={`${ui.card} ${ui.cardPad} mb-6`}>
+          <div className={`${ui.card} ${ui.cardPad} mb-5`}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-[11px] tracking-[0.22em] uppercase text-zinc-500">Access</div>
                 <div className="mt-1 text-lg font-semibold text-zinc-900">Access restricted</div>
                 <div className={ui.hint}>
-                  Your email/domain isn’t whitelisted for User Creation. Contact HR/Admin to whitelist your domain or email.
+                  Your email/domain isn't whitelisted for User Creation. Contact HR/Admin.
                 </div>
                 <div className="mt-2 text-[12px] text-zinc-700">
-                  You are signed in as: <span className="font-semibold">{myEmail || "-"}</span>
-                  {myDomain ? (
-                    <>
-                      <span className="mx-2">•</span>domain: <span className="font-semibold">{myDomain}</span>
-                    </>
-                  ) : null}
+                  Signed in as: <span className="font-semibold">{myEmail || "-"}</span>
+                  {myDomain ? <><span className="mx-2">&bull;</span>domain: <span className="font-semibold">{myDomain}</span></> : null}
                 </div>
               </div>
               <span className={`${ui.chip} border-amber-200 bg-amber-50 text-amber-800`}>Restricted</span>
             </div>
-
-            <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-[12px] text-zinc-700">
-              If allowlist is empty/not set, access is denied by default (safe default).
-            </div>
           </div>
         )}
 
-        {/* Workspace User Management */}
+        {/* ═══════ STATS ROW ═══════ */}
         {customerAllowed && !showRestrictedByAllowlist && (
-          <div className="grid gap-5 lg:grid-cols-3">
-            {/* Create / Bulk */}
-            <div className="lg:col-span-1 space-y-5">
-              <div className={`${ui.card} ${ui.cardPad}`}>
-                <div className="text-[11px] tracking-[0.22em] uppercase text-zinc-500">Create</div>
-                <div className="mt-1 text-lg font-semibold text-zinc-900">Add a user</div>
-                <div className={ui.hint}>
-                  Creates or updates the user. Optionally sends an invite link.
-                  <span className="block mt-1">
-                    <b>Reporting To</b> is enforced for <b>REQUESTER</b> (uses workspace default if you don’t pick).
-                  </span>
-                </div>
-
-                <form onSubmit={onCreateOne} className="mt-4 grid gap-3">
-                  <label className="grid gap-1">
-                    <span className={ui.label}>Name *</span>
-                    <input
-                      value={cName}
-                      onChange={(e) => setCName(e.target.value)}
-                      placeholder="Full name"
-                      className={ui.input}
-                      disabled={busyCreate || loading}
-                    />
-                  </label>
-
-                  <label className="grid gap-1">
-                    <span className={ui.label}>Email *</span>
-                    <input
-                      value={cEmail}
-                      onChange={(e) => setCEmail(e.target.value)}
-                      placeholder="name@company.com"
-                      className={ui.input}
-                      disabled={busyCreate || loading}
-                    />
-                  </label>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <label className="grid gap-1 min-w-0">
-                      <span className={ui.label}>Role *</span>
-                      <select
-                        value={cRole}
-                        onChange={(e) => onRoleChange(e.target.value as MemberRole)}
-                        className={ui.select}
-                        disabled={busyCreate || loading}
-                      >
-                        <option value="REQUESTER">REQUESTER (L1)</option>
-                        <option value="APPROVER">APPROVER (L2)</option>
-                        <option value="WORKSPACE_LEADER">WORKSPACE_LEADER (L0)</option>
-                      </select>
-                    </label>
-
-                    <label className="grid gap-1 min-w-0">
-                      <span className={ui.label}>Department</span>
-                      <input
-                        value={cDept}
-                        onChange={(e) => setCDept(e.target.value)}
-                        placeholder="Finance"
-                        className={ui.input}
-                        disabled={busyCreate || loading}
-                      />
-                    </label>
-                  </div>
-
-                  {/* Reporting To dropdown for REQUESTER */}
-                  {cRole === "REQUESTER" && (
-                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
-                      <label className="grid gap-1">
-                        <span className={ui.label}>Reporting To (Approver)</span>
-                        <select
-                          value={cApproverEmail}
-                          onChange={(e) => setCApproverEmail(normEmail(e.target.value))}
-                          className={ui.select}
-                          disabled={busyCreate || loading}
-                        >
-                          <option value="">
-                            Auto (use workspace default{workspaceDefaultApprover ? `: ${workspaceDefaultApprover}` : ""})
-                          </option>
-                          {approverOptions.map((a) => (
-                            <option key={a.email} value={a.email}>
-                              {a.name} • {a.email}
-                            </option>
-                          ))}
-                        </select>
-
-                        <div className={ui.hint}>
-                          {approverOptions.length === 0 ? (
-                            <span className="text-amber-800">
-                              No Approvers found yet. Create an Approver first (or set workspace default approver).
-                            </span>
-                          ) : (
-                            <span>
-                              If you keep <b>Auto</b>, backend will use <b>workspace.defaultApproverEmails</b>.
-                            </span>
-                          )}
-                        </div>
-
-                        {!workspaceDefaultApprover && (
-                          <div className="mt-2 text-[11px] text-zinc-700">
-                            Workspace default approver: <b className="text-red-700">Not set</b>
-                          </div>
-                        )}
-                      </label>
-                    </div>
-                  )}
-
-                  <label className="grid gap-1">
-                    <span className={ui.label}>Phone</span>
-                    <input
-                      value={cPhone}
-                      onChange={(e) => setCPhone(e.target.value)}
-                      placeholder="+91…"
-                      className={ui.input}
-                      disabled={busyCreate || loading}
-                    />
-                  </label>
-
-                  {/* Password optional */}
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-[11px] font-semibold text-zinc-800">Password</div>
-                        <div className="mt-1 text-xs text-zinc-600">
-                          Set a password now, or keep it empty and use Invite / Admin reset.
-                        </div>
-                        {!canUseAdminConsole && (
-                          <div className="mt-1 text-[11px] text-amber-800">
-                            If reset-password is restricted, HR/Admin may be required to force-set it.
-                          </div>
-                        )}
-                      </div>
-
-                      <label className="inline-flex items-center gap-2 text-[12px] text-zinc-700">
-                        <input
-                          type="checkbox"
-                          checked={cSetPassword}
-                          onChange={(e) => {
-                            const on = e.target.checked;
-                            setCSetPassword(on);
-                            if (!on) {
-                              setCPassword("");
-                              setCPassword2("");
-                            }
-                          }}
-                          disabled={busyCreate || loading}
-                        />
-                        Set password
-                      </label>
-                    </div>
-
-                    {cSetPassword && (
-                      <div className="mt-3 grid gap-2">
-                        <label className="grid gap-1">
-                          <span className="text-[11px] font-semibold text-zinc-700">New Password (min 8 chars)</span>
-                          <input
-                            type="password"
-                            value={cPassword}
-                            onChange={(e) => setCPassword(e.target.value)}
-                            placeholder="Enter password"
-                            className={ui.input}
-                            disabled={busyCreate || loading}
-                          />
-                        </label>
-
-                        <label className="grid gap-1">
-                          <span className="text-[11px] font-semibold text-zinc-700">Confirm Password</span>
-                          <input
-                            type="password"
-                            value={cPassword2}
-                            onChange={(e) => setCPassword2(e.target.value)}
-                            placeholder="Re-enter password"
-                            className={ui.input}
-                            disabled={busyCreate || loading}
-                          />
-                        </label>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-4 pt-1">
-                    <label className="inline-flex items-center gap-2 text-[12px] text-zinc-700">
-                      <input
-                        type="checkbox"
-                        checked={cDefaultApprover}
-                        onChange={(e) => setCDefaultApprover(e.target.checked)}
-                        disabled={busyCreate || loading || cRole !== "APPROVER"}
-                      />
-                      Set as default approver
-                    </label>
-
-                    <label className="inline-flex items-center gap-2 text-[12px] text-zinc-700">
-                      <input
-                        type="checkbox"
-                        checked={cActive}
-                        onChange={(e) => setCActive(e.target.checked)}
-                        disabled={busyCreate || loading}
-                      />
-                      Active
-                    </label>
-
-                    <label className="inline-flex items-center gap-2 text-[12px] text-zinc-700">
-                      <input
-                        type="checkbox"
-                        checked={cInvite}
-                        onChange={(e) => setCInvite(e.target.checked)}
-                        disabled={busyCreate || loading}
-                      />
-                      Send invite email
-                    </label>
-                  </div>
-
-                  <button type="submit" disabled={busyCreate || loading} className={ui.btnPrimary}>
-                    {busyCreate ? "Saving…" : "Create / Update"}
-                  </button>
-                </form>
+          <div className="mb-5 grid gap-3 grid-cols-2 lg:grid-cols-5">
+            {([
+              ["Total", stats.total],
+              ["Active", stats.active],
+              ["Leaders", stats.leaders],
+              ["Approvers", stats.approvers],
+              ["Requesters", stats.requesters],
+            ] as const).map(([k, v]) => (
+              <div key={k} className="rounded-2xl border border-zinc-200/70 bg-white/70 px-4 py-3">
+                <div className="text-[10px] tracking-[0.22em] uppercase text-zinc-500">{k}</div>
+                <div className="mt-1 text-lg font-semibold text-zinc-900">{v}</div>
               </div>
+            ))}
+          </div>
+        )}
 
-              {/* Bulk */}
-              <div className={`${ui.card} ${ui.cardPad}`}>
-                <div className="text-[11px] tracking-[0.22em] uppercase text-zinc-500">Bulk</div>
-                <div className="mt-1 text-lg font-semibold text-zinc-900">Import / Export</div>
-                <div className={ui.hint}>Upload CSV/XLSX, or download templates & exports.</div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => onDownloadTemplate("csv")} className={ui.btnGhost}>
-                    Download CSV Template
+        {/* ═══════ TAB STRIP ═══════ */}
+        {!showRestrictedByAllowlist && (
+          <div className={`${ui.card} overflow-hidden`}>
+            <div className="border-b border-zinc-200 px-4 overflow-x-auto">
+              <div className="flex whitespace-nowrap">
+                {tabs.filter((t) => t.show).map((t) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setActiveTab(t.key)}
+                    className={`inline-flex items-center gap-1.5 px-4 py-3 text-[12px] font-semibold transition-colors ${
+                      activeTab === t.key
+                        ? "border-b-2 border-[#00477f] text-[#00477f]"
+                        : "text-zinc-500 hover:text-zinc-800"
+                    }`}
+                  >
+                    {t.icon}
+                    {t.label}
                   </button>
-                  <button type="button" onClick={() => onDownloadTemplate("xlsx")} className={ui.btnGhost}>
-                    Download Excel Template
-                  </button>
-                  <button type="button" onClick={() => onExport("csv")} className={ui.btnGhost}>
-                    Export CSV
-                  </button>
-                  <button type="button" onClick={() => onExport("xlsx")} className={ui.btnGhost}>
-                    Export Excel
-                  </button>
-                </div>
-
-                <div className="mt-4 grid gap-2">
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept=".csv,.xlsx,.xls"
-                    className="block w-full text-[12px] text-zinc-700 file:mr-4 file:rounded-full file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-[12px] file:font-semibold file:text-white hover:file:bg-zinc-800"
-                    disabled={busyBulk}
-                  />
-                  <button type="button" onClick={onBulkUpload} disabled={busyBulk} className={ui.btnPrimary}>
-                    {busyBulk ? "Uploading…" : "Upload & Import"}
-                  </button>
-                </div>
-
-                {bulkResult && (
-                  <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-[12px] text-zinc-800">
-                    <div className="font-semibold">Bulk result</div>
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-[11px] font-semibold text-zinc-700">View raw</summary>
-                      <pre className="mt-2 overflow-auto rounded-xl bg-white p-2 text-[11px] text-zinc-700">
-                        {JSON.stringify(bulkResult, null, 2)}
-                      </pre>
-                    </details>
-                  </div>
-                )}
+                ))}
               </div>
             </div>
 
-            {/* Users list */}
-            <div className="lg:col-span-2">
-              <div className={`${ui.card} ${ui.cardPad}`}>
-                <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className={ui.cardPad}>
+              {/* ═══════ TAB 1: USERS ═══════ */}
+              {activeTab === "users" && (
+                !customerAllowed ? emptyPrompt : (
                   <div>
-                    <div className="text-[11px] tracking-[0.22em] uppercase text-zinc-500">Users</div>
-                    <div className="mt-1 text-lg font-semibold text-zinc-900">Workspace directory</div>
-                    <div className={ui.hint}>Activate/deactivate users and resend invites. Default approvers are highlighted.</div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button type="button" onClick={reload} className={ui.btnGhost} disabled={loading}>
-                      {loading ? "Refreshing…" : "Refresh"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Cozy tools */}
-                <div className="mt-4 grid gap-2 md:grid-cols-12">
-                  <div className="md:col-span-6">
-                    <label className="grid gap-1">
-                      <span className="text-[11px] font-semibold text-zinc-700">Search</span>
-                      <input
-                        value={q}
-                        onChange={(e) => setQ(e.target.value)}
-                        placeholder="Search name, email, department…"
-                        className={ui.input}
-                      />
-                    </label>
-                  </div>
-
-                  <div className="md:col-span-4">
-                    <label className="grid gap-1">
-                      <span className="text-[11px] font-semibold text-zinc-700">Role</span>
-                      <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as any)} className={ui.select}>
-                        <option value="ALL">All roles</option>
-                        <option value="WORKSPACE_LEADER">WORKSPACE_LEADER</option>
-                        <option value="APPROVER">APPROVER</option>
-                        <option value="REQUESTER">REQUESTER</option>
-                      </select>
-                    </label>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <div className="h-full flex items-end">
-                      <label className="inline-flex items-center gap-2 text-[12px] text-zinc-700">
+                    {/* Filters */}
+                    <div className="flex flex-col gap-2 md:flex-row md:items-end md:gap-3">
+                      <div className="flex-1">
+                        <span className="text-[11px] font-semibold text-zinc-700">Search</span>
+                        <input
+                          value={q}
+                          onChange={(e) => setQ(e.target.value)}
+                          placeholder="Search name, email, department..."
+                          className={`mt-1 ${ui.input}`}
+                        />
+                      </div>
+                      <div className="w-full md:w-48">
+                        <span className="text-[11px] font-semibold text-zinc-700">Role</span>
+                        <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as any)} className={`mt-1 ${ui.select}`}>
+                          <option value="ALL">All roles</option>
+                          <option value="WORKSPACE_LEADER">WORKSPACE_LEADER</option>
+                          <option value="APPROVER">APPROVER</option>
+                          <option value="REQUESTER">REQUESTER</option>
+                        </select>
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-[12px] text-zinc-700 pb-2">
                         <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} />
                         Active only
                       </label>
+                      <button type="button" onClick={reload} className={`${ui.btnGhost} mb-0.5`} disabled={loading}>
+                        {loading ? "..." : "Refresh"}
+                      </button>
                     </div>
-                  </div>
-                </div>
 
-                <div className="mt-4 overflow-auto rounded-2xl border border-zinc-200 bg-white">
-                  <table className="min-w-full text-left text-[12px]">
-                    <thead className="sticky top-0 bg-zinc-50 text-zinc-700">
-                      <tr>
-                        <th className="px-3 py-2 font-semibold">Name</th>
-                        <th className="px-3 py-2 font-semibold">Email</th>
-                        <th className="px-3 py-2 font-semibold">Role</th>
-                        <th className="px-3 py-2 font-semibold">Dept</th>
-                        <th className="px-3 py-2 font-semibold">Active</th>
-                        <th className="px-3 py-2 font-semibold">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                    {/* Desktop table */}
+                    <div className="mt-4 overflow-auto rounded-2xl border border-zinc-200 bg-white hidden md:block">
+                      <table className="min-w-full text-left text-[12px]">
+                        <thead className="sticky top-0 bg-zinc-50 text-zinc-700">
+                          <tr>
+                            <th className="px-3 py-2 font-semibold">Name</th>
+                            <th className="px-3 py-2 font-semibold">Email</th>
+                            <th className="px-3 py-2 font-semibold">Role</th>
+                            <th className="px-3 py-2 font-semibold">Dept</th>
+                            <th className="px-3 py-2 font-semibold">Active</th>
+                            <th className="px-3 py-2 font-semibold">SBT Access</th>
+                            <th className="px-3 py-2 font-semibold">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredRows.map((r) => {
+                            const isDefault = defaultSet.has(normEmail(r.email));
+                            const active = r.isActive !== false;
+                            const isSelf = isWorkspaceLeader && !canUseAdminConsole && normEmail(r.email) === myEmail;
+                            return (
+                              <tr key={r._id} className={`border-t border-zinc-100 ${isSelf ? "bg-blue-50/30" : "hover:bg-[#00477f]/[0.03]"}`}>
+                                <td className="px-3 py-2 text-zinc-900">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-semibold">{r.name || "-"}</span>
+                                    {isSelf && (
+                                      <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-[1px] text-[10px] font-semibold text-blue-700">You</span>
+                                    )}
+                                  </div>
+                                  {isDefault && (
+                                    <div className="mt-0.5 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-[2px] text-[10px] font-semibold text-emerald-800">
+                                      Default Approver
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-zinc-700">{r.email}</td>
+                                <td className="px-3 py-2">
+                                  <span className="inline-flex rounded-full border border-zinc-200 bg-white px-2 py-[2px] text-[11px] font-semibold text-zinc-800">
+                                    {r.role}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 text-zinc-700">{r.department || "-"}</td>
+                                <td className="px-3 py-2">
+                                  <span className={`inline-flex rounded-full border px-2 py-[2px] text-[11px] font-semibold ${active ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>
+                                    {active ? "YES" : "NO"}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2">
+                                  {(workspace?.travelMode || "APPROVAL_FLOW") === "APPROVAL_FLOW" ? (
+                                    <span className="text-[10px] text-zinc-400">&mdash;</span>
+                                  ) : isSelf ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-zinc-400 cursor-not-allowed" title="Contact Plumtrips Admin to modify your own permissions">
+                                      <span>{r.sbtEnabled ? "On" : "Off"}</span>
+                                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3 w-3"><path fillRule="evenodd" d="M8 1a3.5 3.5 0 0 0-3.5 3.5V7A1.5 1.5 0 0 0 3 8.5v5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 7V4.5A3.5 3.5 0 0 0 8 1Zm2 6V4.5a2 2 0 1 0-4 0V7h4Z" clipRule="evenodd" /></svg>
+                                    </span>
+                                  ) : r.userId ? (
+                                    <button type="button" onClick={() => onToggleSbt(r)} className="relative inline-flex items-center gap-1.5" title={r.sbtEnabled ? "SBT On" : "SBT Off"}>
+                                      <span className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${r.sbtEnabled ? "bg-green-500" : "bg-gray-200"}`}>
+                                        <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${r.sbtEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
+                                      </span>
+                                      <span className="text-[10px] font-semibold text-zinc-600">{r.sbtEnabled ? "On" : "Off"}</span>
+                                    </button>
+                                  ) : (
+                                    <span className="text-[10px] text-zinc-400">&mdash;</span>
+                                  )}
+                                  {r.sbtRole && (
+                                    <span className="text-[10px] text-gray-400 mt-0.5 block">
+                                      {r.sbtRole === "L1" ? "Requestor" : r.sbtRole === "L2" ? "Booker" : "Both"}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2">
+                                  <div className="flex flex-wrap gap-1">
+                                    {isSelf ? (
+                                      <span className="inline-flex items-center gap-1 h-8 px-3 text-[11px] text-zinc-400 cursor-not-allowed" title="Contact Plumtrips Admin to modify your account">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3 w-3"><path fillRule="evenodd" d="M8 1a3.5 3.5 0 0 0-3.5 3.5V7A1.5 1.5 0 0 0 3 8.5v5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 7V4.5A3.5 3.5 0 0 0 8 1Zm2 6V4.5a2 2 0 1 0-4 0V7h4Z" clipRule="evenodd" /></svg>
+                                        Locked
+                                      </span>
+                                    ) : (
+                                      <>
+                                        <button type="button" onClick={() => onToggleActive(r)} className={ui.btnTiny}>
+                                          {active ? "Deactivate" : "Activate"}
+                                        </button>
+                                        <button type="button" onClick={() => onReinvite(r)} className={ui.btnTiny}>
+                                          Re-invite
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {filteredRows.length === 0 && (
+                            <tr>
+                              <td className="px-3 py-8 text-center text-zinc-600" colSpan={7}>
+                                {loading ? "Loading users..." : "No users found (try clearing filters)."}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Mobile cards */}
+                    <div className="mt-4 space-y-3 md:hidden">
                       {filteredRows.map((r) => {
                         const isDefault = defaultSet.has(normEmail(r.email));
-                        const active = r.isActive === false ? false : true;
-
+                        const active = r.isActive !== false;
+                        const isSelf = isWorkspaceLeader && !canUseAdminConsole && normEmail(r.email) === myEmail;
                         return (
-                          <tr key={r._id} className="border-t border-zinc-100 hover:bg-[#00477f]/[0.03]">
-                            <td className="px-3 py-2 text-zinc-900">
-                              <div className="font-semibold">{r.name || "-"}</div>
-                              {isDefault && (
-                                <div className="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-[2px] text-[10px] font-semibold text-emerald-800">
-                                  Default Approver
+                          <div key={r._id} className={`rounded-2xl border border-zinc-200 p-3 ${isSelf ? "bg-blue-50/30" : "bg-white"}`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-semibold text-[12px] text-zinc-900">{r.name || "-"}</span>
+                                  {isSelf && (
+                                    <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-[1px] text-[10px] font-semibold text-blue-700">You</span>
+                                  )}
                                 </div>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-zinc-700">{r.email}</td>
-                            <td className="px-3 py-2">
-                              <span className="inline-flex rounded-full border border-zinc-200 bg-white px-2 py-[2px] text-[11px] font-semibold text-zinc-800">
-                                {r.role}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2 text-zinc-700">{r.department || "-"}</td>
-                            <td className="px-3 py-2">
-                              <span
-                                className={`inline-flex rounded-full border px-2 py-[2px] text-[11px] font-semibold ${
-                                  active
-                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                    : "border-zinc-200 bg-zinc-50 text-zinc-700"
-                                }`}
-                              >
-                                {active ? "YES" : "NO"}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="flex flex-wrap gap-2">
-                                <button type="button" onClick={() => onToggleActive(r)} className={ui.btnTiny}>
-                                  {active ? "Deactivate" : "Activate"}
-                                </button>
-                                <button type="button" onClick={() => onReinvite(r)} className={ui.btnTiny}>
-                                  Re-invite
-                                </button>
+                                <div className="text-[11px] text-zinc-600">{r.email}</div>
                               </div>
-                            </td>
-                          </tr>
+                              <div className="flex items-center gap-1.5">
+                                <span className="inline-flex rounded-full border border-zinc-200 bg-white px-2 py-[2px] text-[10px] font-semibold text-zinc-800">
+                                  {r.role}
+                                </span>
+                                <span className={`inline-flex rounded-full border px-2 py-[2px] text-[10px] font-semibold ${active ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>
+                                  {active ? "Active" : "Inactive"}
+                                </span>
+                              </div>
+                            </div>
+                            {isDefault && (
+                              <div className="mt-1.5 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-[2px] text-[10px] font-semibold text-emerald-800">
+                                Default Approver
+                              </div>
+                            )}
+                            {r.department && <div className="mt-1 text-[11px] text-zinc-500">Dept: {r.department}</div>}
+                            <div className="mt-2 flex items-center justify-between">
+                              <div>
+                                {(workspace?.travelMode || "APPROVAL_FLOW") === "APPROVAL_FLOW" ? (
+                                  <span className="text-[10px] text-zinc-400">SBT: &mdash;</span>
+                                ) : isSelf ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-zinc-400 cursor-not-allowed" title="Contact Plumtrips Admin to modify your own permissions">
+                                    <span>SBT: {r.sbtEnabled ? "On" : "Off"}</span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3 w-3"><path fillRule="evenodd" d="M8 1a3.5 3.5 0 0 0-3.5 3.5V7A1.5 1.5 0 0 0 3 8.5v5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 7V4.5A3.5 3.5 0 0 0 8 1Zm2 6V4.5a2 2 0 1 0-4 0V7h4Z" clipRule="evenodd" /></svg>
+                                  </span>
+                                ) : r.userId ? (
+                                  <button type="button" onClick={() => onToggleSbt(r)} className="relative inline-flex items-center gap-1.5">
+                                    <span className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${r.sbtEnabled ? "bg-green-500" : "bg-gray-200"}`}>
+                                      <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${r.sbtEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
+                                    </span>
+                                    <span className="text-[10px] font-semibold text-zinc-600">{r.sbtEnabled ? "On" : "Off"}</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] text-zinc-400">SBT: &mdash;</span>
+                                )}
+                                {r.sbtRole && (
+                                  <span className="text-[10px] text-gray-400 ml-2">
+                                    {r.sbtRole === "L1" ? "Requestor" : r.sbtRole === "L2" ? "Booker" : "Both"}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex gap-1">
+                                {isSelf ? (
+                                  <span className="inline-flex items-center gap-1 h-8 px-3 text-[11px] text-zinc-400 cursor-not-allowed" title="Contact Plumtrips Admin to modify your account">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-3 w-3"><path fillRule="evenodd" d="M8 1a3.5 3.5 0 0 0-3.5 3.5V7A1.5 1.5 0 0 0 3 8.5v5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 7V4.5A3.5 3.5 0 0 0 8 1Zm2 6V4.5a2 2 0 1 0-4 0V7h4Z" clipRule="evenodd" /></svg>
+                                    Locked
+                                  </span>
+                                ) : (
+                                  <>
+                                    <button type="button" onClick={() => onToggleActive(r)} className={ui.btnTiny}>{active ? "Deactivate" : "Activate"}</button>
+                                    <button type="button" onClick={() => onReinvite(r)} className={ui.btnTiny}>Re-invite</button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         );
                       })}
-
                       {filteredRows.length === 0 && (
-                        <tr>
-                          <td className="px-3 py-8 text-center text-zinc-600" colSpan={6}>
-                            {loading ? "Loading users…" : "No users found (try clearing filters)."}
-                          </td>
-                        </tr>
+                        <div className="py-8 text-center text-[12px] text-zinc-600">
+                          {loading ? "Loading users..." : "No users found (try clearing filters)."}
+                        </div>
                       )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {workspace && (
-                  <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-[12px] text-zinc-700">
-                    <div className="font-semibold text-zinc-900">Workspace policy</div>
-
-                    <div className="mt-1">
-                      Allowlist domains:{" "}
-                      <span className="font-semibold">
-                        {availableDomains.length
-                          ? availableDomains.join(", ")
-                          : "Not set (deny-by-default for customer-side actors)"}
-                      </span>
                     </div>
 
-                    <div className="mt-1">
-                      Allowlist emails:{" "}
-                      <span className="font-semibold">
-                        {(allowlist?.emails || []).length ? (allowlist?.emails || []).join(", ") : "Not set"}
-                      </span>
-                    </div>
+                    {/* Workspace policy summary */}
+                    {workspace && (
+                      <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-[12px] text-zinc-700">
+                        <span className="font-semibold text-zinc-900">Workspace:</span>{" "}
+                        Domains: <span className="font-semibold">{availableDomains.length ? availableDomains.join(", ") : "Not set"}</span>
+                        <span className="mx-2">&bull;</span>
+                        Approver can create: <span className="font-semibold">{workspace.canApproverCreateUsers ? "YES" : "NO"}</span>
+                      </div>
+                    )}
+                  </div>
+                )
+              )}
 
-                    <div className="mt-1">
-                      Approver can create users:{" "}
-                      <span className="font-semibold">{workspace.canApproverCreateUsers ? "YES" : "NO"}</span>
+              {/* ═══════ TAB 2: SETTINGS ═══════ */}
+              {activeTab === "settings" && (
+                !customerAllowed ? emptyPrompt : (
+                  <div className="space-y-5">
+                    {/* Travel Mode — staff only */}
+                    {canUseAdminConsole && (
+                    <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <div className="text-base font-semibold text-zinc-900">Booking Mode</div>
+                          <div className={ui.hint}>Controls whether this company uses SBT (self-booking) or Approval Flow.</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {(["APPROVAL_FLOW", "SBT"] as const).map((mode) => {
+                            const isActive = (workspace?.travelMode || "APPROVAL_FLOW") === mode;
+                            const label = mode === "APPROVAL_FLOW" ? "Approval Flow" : "SBT";
+                            return (
+                              <button
+                                key={mode}
+                                type="button"
+                                disabled={travelModeBusy}
+                                onClick={() => onSetTravelMode(mode)}
+                                className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-full px-5 text-[12px] font-semibold transition-colors ${
+                                  isActive
+                                    ? "bg-[#00477f] text-white"
+                                    : "border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                                }`}
+                              >
+                                {travelModeBusy && isActive && (
+                                  <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                                  </svg>
+                                )}
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                    )}
+
+                    {/* ACCESS CONTROL PANEL */}
+                    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+                      <h3 className="text-base font-semibold text-gray-900 mb-1">
+                        Workspace Access Control
+                      </h3>
+                      <p className="text-sm text-gray-500 mb-6">
+                        Control how people can join this workspace.
+                      </p>
+
+                      <div className="space-y-3">
+                        {/* INVITE_ONLY */}
+                        <label className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                          accessMode === "INVITE_ONLY"
+                            ? "border-[#00477f] bg-blue-50/30"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}>
+                          <input type="radio" value="INVITE_ONLY"
+                            checked={accessMode === "INVITE_ONLY"}
+                            onChange={() => setAccessMode("INVITE_ONLY")}
+                            className="mt-1" />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-gray-900">Invite Only</span>
+                              <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">RECOMMENDED</span>
+                            </div>
+                            <p className="text-sm text-gray-500 mt-0.5">
+                              Only users created by Admin or Workspace Leader can access this workspace. Most secure option.
+                            </p>
+                          </div>
+                        </label>
+
+                        {/* COMPANY_DOMAIN */}
+                        <label className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                          accessMode === "COMPANY_DOMAIN"
+                            ? "border-[#00477f] bg-blue-50/30"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}>
+                          <input type="radio" value="COMPANY_DOMAIN"
+                            checked={accessMode === "COMPANY_DOMAIN"}
+                            onChange={() => setAccessMode("COMPANY_DOMAIN")}
+                            className="mt-1" />
+                          <div className="flex-1">
+                            <span className="font-semibold text-gray-900">Company Domain</span>
+                            <p className="text-sm text-gray-500 mt-0.5">
+                              Anyone with your company's official email domain can be invited. Generic domains (Gmail, Hotmail etc.) are blocked.
+                            </p>
+                            {accessMode === "COMPANY_DOMAIN" && (
+                              <div className="mt-3">
+                                <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  Allowed Domain
+                                </label>
+                                <div className="flex gap-2 mt-1">
+                                  <input
+                                    placeholder="e.g. yourcompany.com"
+                                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                    value={accessDomainInput}
+                                    onChange={e => setAccessDomainInput(e.target.value)}
+                                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddAccessDomain(); } }}
+                                  />
+                                  <button onClick={handleAddAccessDomain}
+                                    className="bg-[#00477f] text-white px-4 py-2 rounded-lg text-sm font-medium">
+                                    Add
+                                  </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {accessDomains.map(domain => (
+                                    <span key={domain}
+                                      className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full">
+                                      @{domain}
+                                      <button onClick={() => removeAccessDomain(domain)}
+                                        className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </label>
+
+                        {/* EMAIL_ALLOWLIST */}
+                        <label className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                          accessMode === "EMAIL_ALLOWLIST"
+                            ? "border-[#00477f] bg-blue-50/30"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}>
+                          <input type="radio" value="EMAIL_ALLOWLIST"
+                            checked={accessMode === "EMAIL_ALLOWLIST"}
+                            onChange={() => setAccessMode("EMAIL_ALLOWLIST")}
+                            className="mt-1" />
+                          <div className="flex-1">
+                            <span className="font-semibold text-gray-900">Email Allowlist</span>
+                            <p className="text-sm text-gray-500 mt-0.5">
+                              Only specific email addresses you add below can be invited. Works with any email including Gmail.
+                            </p>
+                            {accessMode === "EMAIL_ALLOWLIST" && (
+                              <div className="mt-3">
+                                <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  Allowed Emails (one per line)
+                                </label>
+                                <textarea
+                                  className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono resize-none"
+                                  rows={4}
+                                  placeholder={"john@company.com\njane@gmail.com\n..."}
+                                  value={accessEmails.join("\n")}
+                                  onChange={e => setAccessEmails(
+                                    e.target.value.split("\n").map(s => s.trim()).filter(Boolean)
+                                  )}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      </div>
+
+                      {accessModeErr && (
+                        <div className="mt-3 text-sm text-red-600">{accessModeErr}</div>
+                      )}
+
+                      <div className="mt-4 flex justify-end">
+                        <button onClick={handleSaveAccessMode}
+                          disabled={accessModeBusy}
+                          className="bg-[#00477f] text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-[#003a6b] transition-colors disabled:opacity-50">
+                          {accessModeBusy ? "Saving..." : "Save Access Settings"}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+                )
+              )}
 
-        {/* Staff Admin Credential Console */}
-        {canUseAdminConsole && (
-          <div className={`mt-6 ${ui.card} ${ui.cardPad}`}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-[11px] tracking-[0.22em] uppercase text-zinc-500">Administrative</div>
-                <div className="mt-1 text-lg font-semibold text-zinc-900">Staff Credential Console</div>
-                <div className={ui.hint}>
-                  Reset credentials using <span className="font-semibold">/auth/admin/reset-password</span>.
-                </div>
-              </div>
-              <span className={`${ui.chip} border-zinc-200 bg-zinc-50 text-zinc-700`}>HR/Admin/SuperAdmin</span>
-            </div>
+              {/* ═══════ TAB 3: CREATE ═══════ */}
+              {activeTab === "create" && (
+                <div className="grid gap-5 lg:grid-cols-2">
+                  {/* Left: Add a user */}
+                  <div>
+                    <div className="text-base font-semibold text-zinc-900">Add a User</div>
+                    <div className={ui.hint}>
+                      Creates or updates the user. Optionally sends an invite link.
+                      <span className="block mt-1"><b>Reporting To</b> is enforced for <b>REQUESTER</b>.</span>
+                    </div>
 
-            <form onSubmit={onAdminReset} className="mt-5 grid gap-3 max-w-xl">
-              <label className="grid gap-1">
-                <span className={ui.label}>User Email</span>
-                <input value={aEmail} onChange={(e) => setAEmail(e.target.value)} placeholder="name@company.com" className={ui.input} />
-              </label>
+                    {!customerAllowed && !canUseAdminConsole && (
+                      <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                        Load a company workspace first.
+                      </div>
+                    )}
 
-              <label className="grid gap-1">
-                <span className={ui.label}>Optional: Set Password (min 8 chars)</span>
-                <input
-                  type="password"
-                  value={aPassword}
-                  onChange={(e) => setAPassword(e.target.value)}
-                  placeholder="Leave empty to auto-generate"
-                  className={ui.input}
-                />
-              </label>
+                    <form onSubmit={onCreateOne} className="mt-4 grid gap-3">
+                      <label className="grid gap-1">
+                        <span className={ui.label}>Name *</span>
+                        <input value={cName} onChange={(e) => setCName(e.target.value)} placeholder="Full name" className={ui.input} disabled={busyCreate || loading} />
+                      </label>
 
-              {adminErr && (
-                <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
-                  {adminErr}
+                      <label className="grid gap-1">
+                        <span className={ui.label}>Email *</span>
+                        <input value={cEmail} onChange={(e) => setCEmail(e.target.value)} placeholder="name@company.com" className={ui.input} disabled={busyCreate || loading} />
+                      </label>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <label className="grid gap-1 min-w-0">
+                          <span className={ui.label}>Role *</span>
+                          <select value={cRole} onChange={(e) => onRoleChange(e.target.value as MemberRole)} className={ui.select} disabled={busyCreate || loading}>
+                            <option value="REQUESTER">REQUESTER (L1)</option>
+                            <option value="APPROVER">APPROVER (L2)</option>
+                            {canUseAdminConsole && (
+                              <option value="WORKSPACE_LEADER">WORKSPACE_LEADER (L0)</option>
+                            )}
+                          </select>
+                        </label>
+                        <label className="grid gap-1 min-w-0">
+                          <span className={ui.label}>Department</span>
+                          <input value={cDept} onChange={(e) => setCDept(e.target.value)} placeholder="Finance" className={ui.input} disabled={busyCreate || loading} />
+                        </label>
+                      </div>
+
+                      {cRole === "REQUESTER" && (
+                        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+                          <label className="grid gap-1">
+                            <span className={ui.label}>Reporting To (Approver)</span>
+                            <select value={cApproverEmail} onChange={(e) => setCApproverEmail(normEmail(e.target.value))} className={ui.select} disabled={busyCreate || loading}>
+                              <option value="">Auto (workspace default{workspaceDefaultApprover ? `: ${workspaceDefaultApprover}` : ""})</option>
+                              {approverOptions.map((a) => <option key={a.email} value={a.email}>{a.name} &bull; {a.email}</option>)}
+                            </select>
+                            <div className={ui.hint}>
+                              {approverOptions.length === 0
+                                ? <span className="text-amber-800">No Approvers found. Create one first.</span>
+                                : <span>If <b>Auto</b>, uses workspace default.</span>
+                              }
+                            </div>
+                            {!workspaceDefaultApprover && (
+                              <div className="mt-1 text-[11px] text-zinc-700">Default approver: <b className="text-red-700">Not set</b></div>
+                            )}
+                          </label>
+                        </div>
+                      )}
+
+                      {/* SBT Access — shown when workspace is in SBT mode */}
+                      {(workspace?.travelMode === "SBT") && (
+                        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+                          <div className={ui.label}>SBT Access</div>
+                          <div className="mt-2 grid gap-3">
+                            <label className="grid gap-1">
+                              <span className="text-[11px] font-semibold text-zinc-700">SBT Role</span>
+                              <select
+                                value={cSbtRole}
+                                onChange={e => { setCSbtRole(e.target.value); if (!["L1", "BOTH"].includes(e.target.value)) setCSbtBookerId(""); }}
+                                className={ui.select}
+                                disabled={busyCreate || loading}
+                              >
+                                <option value="">None (Direct Booking)</option>
+                                <option value="L1">L1 — Requestor (search &amp; raise requests)</option>
+                                <option value="L2">L2 — Booker (review &amp; book requests)</option>
+                                <option value="BOTH">Both (can request and book)</option>
+                              </select>
+                              <div className={ui.hint}>Leave as None to allow direct SBT booking without the request flow.</div>
+                            </label>
+
+                            {(cSbtRole === "L1" || cSbtRole === "BOTH") && (
+                              <label className="grid gap-1">
+                                <span className="text-[11px] font-semibold text-zinc-700">Assigned L2 Booker</span>
+                                <select
+                                  value={cSbtBookerId}
+                                  onChange={e => setCSbtBookerId(e.target.value)}
+                                  className={ui.select}
+                                  disabled={busyCreate || loading}
+                                >
+                                  <option value="">Auto (Workspace Leader)</option>
+                                  {availableBookers.map(b => (
+                                    <option key={b._id} value={b._id}>
+                                      {b.name || b.email} — {b.isWorkspaceLeader ? "Workspace Leader" : "L2 Booker"}
+                                    </option>
+                                  ))}
+                                </select>
+                                <div className={ui.hint}>If not set, requests will auto-route to the Workspace Leader.</div>
+                              </label>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <label className="grid gap-1">
+                        <span className={ui.label}>Phone</span>
+                        <input value={cPhone} onChange={(e) => setCPhone(e.target.value)} placeholder="+91..." className={ui.input} disabled={busyCreate || loading} />
+                      </label>
+
+                      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-[11px] font-semibold text-zinc-800">Password</div>
+                            <div className="mt-1 text-xs text-zinc-600">Set now, or use Invite / Admin reset.</div>
+                            {!canUseAdminConsole && (
+                              <div className="mt-1 text-[11px] text-amber-800">Reset may require HR/Admin.</div>
+                            )}
+                          </div>
+                          <label className="inline-flex items-center gap-2 text-[12px] text-zinc-700">
+                            <input
+                              type="checkbox"
+                              checked={cSetPassword}
+                              onChange={(e) => { const on = e.target.checked; setCSetPassword(on); if (!on) { setCPassword(""); setCPassword2(""); } }}
+                              disabled={busyCreate || loading}
+                            />
+                            Set password
+                          </label>
+                        </div>
+                        {cSetPassword && (
+                          <div className="mt-3 grid gap-2">
+                            <label className="grid gap-1">
+                              <span className="text-[11px] font-semibold text-zinc-700">New Password (min 8)</span>
+                              <input type="password" value={cPassword} onChange={(e) => setCPassword(e.target.value)} placeholder="Enter password" className={ui.input} disabled={busyCreate || loading} />
+                            </label>
+                            <label className="grid gap-1">
+                              <span className="text-[11px] font-semibold text-zinc-700">Confirm Password</span>
+                              <input type="password" value={cPassword2} onChange={(e) => setCPassword2(e.target.value)} placeholder="Re-enter password" className={ui.input} disabled={busyCreate || loading} />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-4 pt-1">
+                        <label className="inline-flex items-center gap-2 text-[12px] text-zinc-700">
+                          <input type="checkbox" checked={cDefaultApprover} onChange={(e) => setCDefaultApprover(e.target.checked)} disabled={busyCreate || loading || cRole !== "APPROVER"} />
+                          Set as default approver
+                        </label>
+                        <label className="inline-flex items-center gap-2 text-[12px] text-zinc-700">
+                          <input type="checkbox" checked={cActive} onChange={(e) => setCActive(e.target.checked)} disabled={busyCreate || loading} />
+                          Active
+                        </label>
+                        <label className="inline-flex items-center gap-2 text-[12px] text-zinc-700">
+                          <input type="checkbox" checked={cInvite} onChange={(e) => setCInvite(e.target.checked)} disabled={busyCreate || loading} />
+                          Send invite email
+                        </label>
+                      </div>
+
+                      <button type="submit" disabled={busyCreate || loading} className={ui.btnPrimary}>
+                        {busyCreate ? "Saving..." : "Create / Update"}
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Right: Import / Export */}
+                  <div>
+                    <div className="text-base font-semibold text-zinc-900">Import / Export</div>
+                    <div className={ui.hint}>Upload CSV/XLSX, or download templates &amp; exports.</div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => onDownloadTemplate("csv")} className={ui.btnGhost}>CSV Template</button>
+                      <button type="button" onClick={() => onDownloadTemplate("xlsx")} className={ui.btnGhost}>Excel Template</button>
+                      <button type="button" onClick={() => onExport("csv")} className={ui.btnGhost}>Export CSV</button>
+                      <button type="button" onClick={() => onExport("xlsx")} className={ui.btnGhost}>Export Excel</button>
+                    </div>
+
+                    <div className="mt-4 grid gap-2">
+                      <input
+                        ref={fileRef}
+                        type="file"
+                        accept=".csv,.xlsx,.xls"
+                        className="block w-full text-[12px] text-zinc-700 file:mr-4 file:rounded-full file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-[12px] file:font-semibold file:text-white hover:file:bg-zinc-800"
+                        disabled={busyBulk}
+                      />
+                      <button type="button" onClick={onBulkUpload} disabled={busyBulk} className={ui.btnPrimary}>
+                        {busyBulk ? "Uploading..." : "Upload & Import"}
+                      </button>
+                    </div>
+
+                    {bulkResult && (
+                      <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-[12px] text-zinc-800">
+                        <div className="font-semibold">Bulk result</div>
+                        <details className="mt-2">
+                          <summary className="cursor-pointer text-[11px] font-semibold text-zinc-700">View raw</summary>
+                          <pre className="mt-2 overflow-auto rounded-xl bg-white p-2 text-[11px] text-zinc-700">
+                            {JSON.stringify(bulkResult, null, 2)}
+                          </pre>
+                        </details>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
-              <button type="submit" disabled={busyAdmin} className={ui.btnDark}>
-                {busyAdmin ? "Working…" : "Reset Password"}
-              </button>
-            </form>
-
-            {adminResult && (
-              <div className="mt-5 rounded-3xl border border-zinc-200 bg-zinc-50 p-4">
-                <div className="text-[12px] font-semibold text-zinc-900">Result</div>
-
-                <div className="mt-2 grid gap-2 text-[12px] text-zinc-700">
-                  <div>
-                    <span className="font-semibold">Email:</span> {adminResult?.email || adminResult?.user?.email || "-"}
+              {/* ═══════ TAB 4: ADMIN TOOLS ═══════ */}
+              {activeTab === "admin" && (
+                !canUseAdminConsole ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <Shield size={28} className="text-zinc-400 mb-3" />
+                    <div className="text-sm font-semibold text-zinc-700">Restricted</div>
+                    <div className="mt-1 text-xs text-zinc-500">Admin/HR access required.</div>
                   </div>
+                ) : (
                   <div>
-                    <span className="font-semibold">Created:</span> {String(!!adminResult?.created)}
-                  </div>
-                  {!!adminResult?.tempPassword && (
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em]">Temporary Password</div>
-                      <div className="mt-1 font-mono text-[13px]">{adminResult.tempPassword}</div>
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-base font-semibold text-zinc-900">Staff Credential Console</div>
+                        <div className={ui.hint}>
+                          Reset credentials using <span className="font-semibold">/auth/admin/reset-password</span>.
+                        </div>
+                      </div>
+                      <span className={`${ui.chip} border-zinc-200 bg-zinc-50 text-zinc-700`}>HR/Admin/SuperAdmin</span>
                     </div>
-                  )}
-                </div>
 
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-[11px] font-semibold text-zinc-700">View raw response</summary>
-                  <pre className="mt-2 overflow-auto rounded-2xl bg-white p-3 text-[11px] text-zinc-700">
-                    {JSON.stringify(adminResult, null, 2)}
-                  </pre>
-                </details>
-              </div>
-            )}
+                    <form onSubmit={onAdminReset} className="mt-5 grid gap-3 max-w-xl">
+                      <label className="grid gap-1">
+                        <span className={ui.label}>User Email</span>
+                        <input value={aEmail} onChange={(e) => setAEmail(e.target.value)} placeholder="name@company.com" className={ui.input} />
+                      </label>
+
+                      <label className="grid gap-1">
+                        <span className={ui.label}>Optional: Set Password (min 8 chars)</span>
+                        <input type="password" value={aPassword} onChange={(e) => setAPassword(e.target.value)} placeholder="Leave empty to auto-generate" className={ui.input} />
+                      </label>
+
+                      {adminErr && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+                          {adminErr}
+                        </div>
+                      )}
+
+                      <button type="submit" disabled={busyAdmin} className={ui.btnDark}>
+                        {busyAdmin ? "Working..." : "Reset Password"}
+                      </button>
+                    </form>
+
+                    {adminResult && (
+                      <div className="mt-5 rounded-3xl border border-zinc-200 bg-zinc-50 p-4">
+                        <div className="text-[12px] font-semibold text-zinc-900">Result</div>
+
+                        <div className="mt-2 grid gap-2 text-[12px] text-zinc-700">
+                          <div><span className="font-semibold">Email:</span> {adminResult?.email || adminResult?.user?.email || "-"}</div>
+                          <div><span className="font-semibold">Created:</span> {String(!!adminResult?.created)}</div>
+                          {!!adminResult?.tempPassword && (
+                            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.18em]">Temporary Password</div>
+                              <div className="mt-1 font-mono text-[13px]">{adminResult.tempPassword}</div>
+                            </div>
+                          )}
+                        </div>
+
+                        <details className="mt-3">
+                          <summary className="cursor-pointer text-[11px] font-semibold text-zinc-700">View raw response</summary>
+                          <pre className="mt-2 overflow-auto rounded-2xl bg-white p-3 text-[11px] text-zinc-700">
+                            {JSON.stringify(adminResult, null, 2)}
+                          </pre>
+                        </details>
+                      </div>
+                    )}
+                  </div>
+                )
+              )}
+            </div>
           </div>
         )}
       </div>
+
+      {/* ═══════ TOAST NOTIFICATIONS (fixed bottom-right) ═══════ */}
+      {(actionErr || toast || allowSavedToast) && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm">
+          {actionErr && (
+            <div className="rounded-2xl bg-red-600 text-white px-4 py-3 shadow-lg text-[12px] font-semibold mb-2">
+              {actionErr}
+            </div>
+          )}
+          {!actionErr && (toast || allowSavedToast) && (
+            <div className="rounded-2xl bg-emerald-600 text-white px-4 py-3 shadow-lg text-[12px] font-semibold">
+              {toast || allowSavedToast}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

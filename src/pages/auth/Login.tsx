@@ -53,7 +53,7 @@ export default function Login() {
       {/* Top bar */}
       <div className="flex items-center justify-between px-8 py-5">
         <img src="/assets/logo.png" alt="Plumtrips" className="h-7" />
-        <img src="/assets/plutologo.png" alt="Pluto.ai" className="h-6 opacity-60" />
+        <img src="/assets/plutologo.png" alt="Pluto.ai" className="h-6" />
       </div>
 
       {/* Main content */}
@@ -69,7 +69,7 @@ export default function Login() {
                 Elevate Every Journey.
               </span>
             </h1>
-            <p className="text-slate-400 text-sm mt-4 leading-relaxed max-w-md mx-auto">
+            <p className="text-sm mt-4 leading-relaxed max-w-md mx-auto" style={{ color: '#00477f' }}>
               A sophisticated platform designed for travel companies to manage teams, workflows, and travel experiences with clarity and precision.
             </p>
           </div>
@@ -150,16 +150,16 @@ export default function Login() {
 
       {/* Bottom trust bar */}
       <div className="pb-8 flex flex-col items-center gap-4">
-        <p className="text-[10px] text-slate-300 uppercase tracking-[0.2em]">Recognised &amp; Backed By</p>
-        <div className="flex items-center gap-8 opacity-40 hover:opacity-60 transition-opacity">
+        <p className="text-xs uppercase tracking-widest font-semibold" style={{ color: '#00477f' }}>Recognised &amp; Backed By</p>
+        <div className="flex items-center gap-8">
           <img src="/assets/nvidia.png" alt="NVIDIA Inception"
-            className="h-6 grayscale hover:grayscale-0 transition-all duration-300" />
+            className="h-12" />
           <div className="w-px h-6 bg-slate-200"></div>
           <img src="/assets/Google_for_Startups_logo.svg" alt="Google for Startups"
-            className="h-6 grayscale hover:grayscale-0 transition-all duration-300" />
+            className="h-6" />
           <div className="w-px h-6 bg-slate-200"></div>
           <img src="/assets/DPIITLOGO.png" alt="Startup India · DPIIT"
-            className="h-6 grayscale hover:grayscale-0 transition-all duration-300" />
+            className="h-12" />
         </div>
         <p className="text-[11px] text-slate-300">© 2026 Plumtrips. All rights reserved.</p>
       </div>

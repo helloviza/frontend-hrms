@@ -17,6 +17,84 @@ export const T = {
   surface:  "#F4F4F8",
 };
 
+/* ── MiniFareRule (cancellation / reissue info) ─────────────────────────── */
+export interface MiniFareRule {
+  JourneyPoints?: string;
+  Type?: string;      // "Cancellation" | "Reissue"
+  From?: string;
+  To?: string;
+  Unit?: string;      // "Hours"
+  Details?: string;
+  OnlineRefundAllowed?: boolean;
+}
+
+/* ── TBO Fare breakdown per pax type ────────────────────────────────────── */
+export interface SBTFareBreakdown {
+  BaseFare?: number;
+  Tax?: number;
+  YQTax?: number;
+  AdditionalTxnFeeOfrd?: number;
+  AdditionalTxnFeePub?: number;
+  PGCharge?: number;
+  SupplierReissueCharges?: number;
+  Currency?: string;
+  PaxType?: number;
+  PassengerCount?: number;
+  TaxBreakUp?: Array<{ key: string; value: number }>;
+}
+
+/* ── TBO Segment ────────────────────────────────────────────────────────── */
+export interface SBTSegment {
+  Baggage?: string;
+  CabinBaggage?: string;
+  CabinClass?: number;
+  Duration?: number;
+  GroundTime?: number;
+  Mile?: number;
+  StopOver?: boolean;
+  StopPoint?: string;
+  StopPointArrivalTime?: string;
+  StopPointDepartureTime?: string;
+  NoOfSeatAvailable?: number;
+  SupplierFareClass?: string | null;
+  Remark?: string | null;
+  FlightInfoIndex?: string;
+  FareClassification?: { Type?: string };
+  Airline: {
+    AirlineCode: string;
+    AirlineName: string;
+    FlightNumber: string;
+    FareClass?: string;
+    OperatingCarrier?: string;
+  };
+  Origin: {
+    DepTime: string;
+    Airport: {
+      AirportCode: string;
+      AirportName?: string;
+      Terminal?: string;
+      CityCode?: string;
+      CityName?: string;
+      CountryCode?: string;
+      CountryName?: string;
+    };
+  };
+  Destination: {
+    ArrTime: string;
+    Airport: {
+      AirportCode: string;
+      AirportName?: string;
+      Terminal?: string;
+      CityCode?: string;
+      CityName?: string;
+      CountryCode?: string;
+      CountryName?: string;
+    };
+  };
+  [key: string]: unknown;
+}
+
+/* ── Main SBTFlight result ──────────────────────────────────────────────── */
 export interface SBTFlight {
   ResultIndex: string;
   IsLCC: boolean;
@@ -24,9 +102,56 @@ export interface SBTFlight {
   Fare: {
     BaseFare: number; Tax: number;
     TotalFare: number; PublishedFare: number;
+    OfferedFare?: number;
     Currency: string;
+    PGCharge?: number;
+    TotalBaggageCharges?: number;
+    TotalMealCharges?: number;
+    TotalSeatCharges?: number;
+    TotalSpecialServiceCharges?: number;
+    TaxBreakup?: Array<{ key: string; value: number }>;
   };
-  Segments: any[][];
+  FareBreakdown?: SBTFareBreakdown[];
+  Segments: SBTSegment[][];
+
+  // Passport & PAN requirements
+  IsPanRequiredAtBook?: boolean;
+  IsPanRequiredAtTicket?: boolean;
+  IsPassportRequiredAtBook?: boolean;
+  IsPassportRequiredAtTicket?: boolean;
+  IsPassportFullDetailRequiredAtBook?: boolean;
+
+  // GST
+  GSTAllowed?: boolean;
+  IsGSTMandatory?: boolean;
+
+  // Name format hints
+  FirstNameFormat?: string | null;
+  LastNameFormat?: string | null;
+
+  // Seat/booking rules
+  IsBookableIfSeatNotAvailable?: boolean;
+  IsHoldAllowedWithSSR?: boolean;
+  IsHoldMandatoryWithSSR?: boolean;
+
+  // Fare type
+  ResultFareType?: string;
+
+  // Airline identifiers
+  ValidatingAirline?: string;
+  AirlineCode?: string;
+
+  // Fare classification
+  FareClassification?: { Color?: string; Type?: string };
+
+  // International search combination
+  SearchCombinationType?: number;
+
+  // Transit visa
+  IsTransitVisaRequired?: boolean;
+
+  // Mini fare rules
+  MiniFareRules?: MiniFareRule[][];
 }
 
 interface Props {
@@ -113,7 +238,8 @@ export function formatTime(dt: string): string {
   return s.slice(0, 5);
 }
 
-export function formatDur(m: number | string) {
+export function formatDur(m: number | string | undefined | null) {
+  if (m == null) return "–";
   if (typeof m === "string") return m || "–";
   return `${Math.floor(m/60)}h ${m%60}m`;
 }
@@ -244,10 +370,10 @@ export default function FlightResultCard({ flight, selected, onSelect, adultsCou
           <p style={{ fontSize:10, color: textSub, margin:"0 0 2px" }}>
             ✈ {seg.Baggage}
           </p>
-          {seg.SeatsAvailable <= 5 && (
+          {typeof seg.SeatsAvailable === "number" && seg.SeatsAvailable <= 5 && (
             <span style={{ fontSize:9, background:`${T.amber}20`, color:T.amber,
               padding:"1px 6px", borderRadius:20, fontWeight:600, display:"block", marginBottom:2 }}>
-              {seg.SeatsAvailable} left!
+              {seg.SeatsAvailable as number} left!
             </span>
           )}
           {flight.NonRefundable

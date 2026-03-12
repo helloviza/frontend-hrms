@@ -6,6 +6,7 @@ import {
   type ApprovalRequest,
 } from "../../../lib/approvalsApi";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../../context/AuthContext";
 
 /* ───────────────────────── helpers / styling ───────────────────────── */
 
@@ -432,6 +433,7 @@ function MyRequestDetailsDrawer({
 
 export default function ApprovalMine() {
   const nav = useNavigate();
+  const { user } = useAuth();
   const [rows, setRows] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -522,12 +524,14 @@ export default function ApprovalMine() {
             </p>
           </div>
 
-          <button
-            className="rounded-full bg-[#00477f] px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-[#003767]"
-            onClick={() => nav("/customer/approvals/new")}
-          >
-            + New Request
-          </button>
+          {!user?.sbtEnabled && (
+            <button
+              className="rounded-full bg-[#00477f] px-4 py-2 text-[11px] font-semibold text-white shadow-sm hover:bg-[#003767]"
+              onClick={() => nav("/customer/approvals/new")}
+            >
+              + New Request
+            </button>
+          )}
         </div>
 
         {err ? (

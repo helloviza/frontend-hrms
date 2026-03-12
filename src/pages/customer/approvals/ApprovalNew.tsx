@@ -902,7 +902,11 @@ const [previewMode, setPreviewMode] = useState<"flight" | "hotel">("flight");
       }
       nav("/customer/approvals/mine");
     } catch (e: any) {
-      setErr(e?.message || "Submit failed");
+      if (e?.code === "SBT_USER_CANNOT_RAISE_REQUEST") {
+        setErr("You have direct booking access. Please use the Self Booking Tool under Bookings.");
+      } else {
+        setErr(e?.message || "Submit failed");
+      }
     } finally {
       setSaving(false);
     }

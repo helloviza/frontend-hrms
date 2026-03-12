@@ -1118,6 +1118,7 @@ function StructuredDocsStep({
             contentType: f.type || "application/octet-stream",
             kind: typeKey,
             type: onboardingType,
+            size: f.size,
           }) as any;
 
           if (!presign?.objectKey) {

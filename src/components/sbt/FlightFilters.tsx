@@ -35,7 +35,7 @@ export function applyFilters(flights: SBTFlight[], f: FilterState): SBTFlight[] 
     if (f.airlines.length && !f.airlines.includes(seg.Airline.AirlineCode)) return false;
     if (f.refundable && r.NonRefundable) return false;
     if (f.maxPrice && price > f.maxPrice) return false;
-    if (f.maxDuration && seg.Duration > f.maxDuration) return false;
+    if (f.maxDuration && (seg.Duration ?? 0) > f.maxDuration) return false;
     if (f.depSlots.length && !f.depSlots.includes(getDepSlot(seg.Origin.DepTime))) return false;
     return true;
   });

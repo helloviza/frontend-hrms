@@ -64,11 +64,11 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: "approvals",
     label: "Approvals",
-    gate: (u) => isCustomer(u) || isApprover(u),
+    gate: (u) => isApprover(u) || ((isCustomer(u)) && u?.sbtEnabled !== true),
     items: [
-      { label: "New Request", to: "/customer/approvals/new", description: "Raise a new travel request for approval" },
-      { label: "My Requests", to: "/customer/approvals/mine", description: "Track status of your submitted travel requests" },
-      { label: "Approver Inbox", to: "/customer/approvals/inbox", description: "Review and approve pending travel requests" },
+      { label: "New Request", to: "/customer/approvals/new", description: "Raise a new travel request for approval", gate: (u) => u?.sbtEnabled !== true },
+      { label: "My Requests", to: "/customer/approvals/mine", description: "Track status of your submitted travel requests", gate: (u) => u?.sbtEnabled !== true },
+      { label: "Approver Inbox", to: "/customer/approvals/inbox", description: "Review and approve pending travel requests", gate: (u) => isApprover(u) || hasAnyRole(u as any, ["Admin", "SuperAdmin", "HR"]) },
     ],
   },
   {
@@ -99,9 +99,15 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: "bookings",
     label: "Bookings",
-    gate: isStaff,
+    gate: (u) => u?.sbtEnabled === true || hasAnyRole(u as any, ["Admin", "SuperAdmin", "HR"]),
     items: [
-      { label: "Book Flights", to: "/sbt/flights", description: "Search and self-book flights via TBO" },
+      { label: "Book your Flights", to: "/sbt/flights", description: "Search and book flights instantly via TBO" },
+      { label: "Flight Booking History", to: "/sbt/flights/bookings", description: "View and manage your flight booking history" },
+      { label: "Book your Hotels", to: "/sbt/hotels", description: "Search and book hotels instantly via TBO" },
+      { label: "Hotel Booking History", to: "/sbt/hotels/bookings", description: "View and manage your hotel booking history" },
+      { label: "Raise Request", to: "/sbt/request", description: "Search and raise a travel request for L2 booking", gate: (u) => u?.sbtRole === "L1" || u?.sbtRole === "BOTH" },
+      { label: "My Requests", to: "/sbt/my-requests", description: "Track your submitted travel requests", gate: (u) => u?.sbtRole === "L1" || u?.sbtRole === "BOTH" },
+      { label: "Booking Inbox", to: "/sbt/inbox", description: "Review and book pending travel requests", gate: (u) => u?.sbtRole === "L2" || u?.sbtRole === "BOTH" || hasAnyRole(u, ["WorkspaceLeader"]) },
     ],
   },
   {
@@ -165,6 +171,17 @@ const NAV_GROUPS: NavGroup[] = [
         to: ADMIN_USERS,
         description: "Create new user accounts and assign roles",
       },
+      {
+        label: "Permissions",
+        to: "/workspace/permissions",
+        description: "Manage per-user workspace permissions and access toggles",
+        gate: (u) =>
+          hasAnyRole(u as any, ["Admin", "SuperAdmin", "HR"]) ||
+          (detectUserKind(u) === "CUSTOMER" &&
+            (Array.isArray(u?.roles) ? u.roles : [u?.role])
+              .map((r: any) => String(r || "").toUpperCase().replace(/[\s\-_]/g, ""))
+              .some((r: string) => r === "WORKSPACELEADER" || r === "WORKSPACE_LEADER")),
+      },
     ],
   },
   {
@@ -174,6 +191,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Admin Analytics", to: "/admin/analytics", description: "Company-wide travel spend and booking analytics" },
       { label: "Admin Reports", to: "/admin/reports", description: "Download detailed reports for payroll, attendance and leaves" },
+      { label: "Ticket Offers", to: "/admin/sbt/offers", description: "Manage promotional offers shown on flight e-tickets" },
     ],
   },
 ];
@@ -204,7 +222,7 @@ function MegaPanel({
 
   return (
     <div
-      className={`fixed top-11 left-0 right-0 z-40 transition-all duration-200 ease-out ${
+      className={`fixed top-12 left-0 right-0 z-40 transition-all duration-200 ease-out ${
         isVisible
           ? "opacity-100 translate-y-0 pointer-events-auto"
           : "opacity-0 -translate-y-2 pointer-events-none"
@@ -286,7 +304,7 @@ export default function Header() {
     <>
       {/* Fixed header bar */}
       <header
-        className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-white/80 border-b border-black/5 h-11 flex items-center px-8"
+        className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-white/80 border-b border-black/5 h-12 flex items-center px-4"
         onMouseLeave={scheduleClose}
       >
         <div className="relative flex items-center w-full h-full">
@@ -300,13 +318,13 @@ export default function Header() {
           </div>
 
           {/* Desktop nav — absolute centered */}
-          <nav className="hidden lg:flex items-center gap-0 absolute left-1/2 -translate-x-1/2">
+          <nav className="hidden lg:flex items-center gap-0 absolute left-1/2 -translate-x-1/2 whitespace-nowrap flex-nowrap">
             {groups.map((group) => (
               <button
                 key={group.id}
                 type="button"
                 onMouseEnter={() => { cancelClose(); setOpenGroupId(group.id); }}
-                className="text-[12px] font-normal text-[#1d1d1f] hover:text-black/60 px-4 py-2 transition-colors duration-200 cursor-pointer"
+                className="text-[13px] font-semibold text-[#1d1d1f] hover:text-black/60 px-3 py-2 whitespace-nowrap flex-shrink-0 transition-colors duration-200 cursor-pointer"
               >
                 {group.label}
               </button>
@@ -323,7 +341,7 @@ export default function Header() {
             <button
               type="button"
               onClick={logout}
-              className="hidden lg:flex items-center gap-1.5 text-[12px] text-slate-400 hover:text-slate-700 hover:bg-slate-100 px-3 py-1.5 rounded-full transition-all duration-150"
+              className="hidden lg:flex items-center gap-1.5 text-[12px] text-red-500 hover:text-red-600 hover:bg-red-50 border border-red-500 px-3 py-1.5 rounded-full transition-all duration-150"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -410,7 +428,7 @@ export default function Header() {
           <button
             type="button"
             onClick={() => { logout(); setMobileOpen(false); }}
-            className="mt-6 w-full text-sm text-red-500 hover:text-red-700 border border-red-200 rounded-lg py-2 transition"
+            className="mt-6 w-full text-sm text-red-500 hover:text-red-600 hover:bg-red-50 border border-red-500 rounded-lg py-2 transition"
           >
             Sign Out
           </button>

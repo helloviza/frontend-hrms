@@ -110,6 +110,35 @@ import Splash from "./pages/Splash";
 
 // ✅ SBT — Self Booking Tool
 import SBTFlightSearch from "./pages/sbt/SBTFlightSearch";
+import SBTFlightBook from "./pages/sbt/SBTFlightBook";
+import SBTFareValidation from "./pages/sbt/SBTFareValidation";
+import SBTPassengers from "./pages/sbt/SBTPassengers";
+import SBTSeats from "./pages/sbt/SBTSeats";
+import SBTExtras from "./pages/sbt/SBTExtras";
+import SBTReview from "./pages/sbt/SBTReview";
+import SBTConfirmed from "./pages/sbt/SBTConfirmed";
+import SBTBookings from "./pages/sbt/SBTBookings";
+import SBTHotelSearch from "./pages/sbt/SBTHotelSearch";
+// SBTHotelBook removed — old step-wizard replaced by Detail→Guests→Review→Confirmed flow
+import SBTHotelDetail from "./pages/sbt/SBTHotelDetail";
+import SBTHotelGuests from "./pages/sbt/SBTHotelGuests";
+import SBTHotelReview from "./pages/sbt/SBTHotelReview";
+import SBTHotelConfirmed from "./pages/sbt/SBTHotelConfirmed";
+import SBTHotelBookings from "./pages/sbt/SBTHotelBookings";
+
+// ✅ SBT Two-Tier Flow (L1 Requestor + L2 Booker)
+import SBTRequestForm from "./pages/sbt/SBTRequestForm";
+import SBTMyRequests from "./pages/sbt/SBTMyRequests";
+import SBTInbox from "./pages/sbt/SBTInbox";
+
+// ✅ SBT Admin — Offer Manager
+import SBTOfferManager from "./pages/admin/SBTOfferManager";
+
+// ✅ Admin Billing Console
+import AdminBilling from "./pages/admin/AdminBilling";
+
+// ✅ Workspace Permissions
+const WorkspacePermissions = React.lazy(() => import("./pages/workspace/WorkspacePermissions"));
 
 /* -------------------------------------------------------------------------- */
 /* Route selectors                                                            */
@@ -162,6 +191,46 @@ function CustomerOnly({ children }: { children: React.ReactNode }) {
   const ok = isCustomer(user as AnyUser) || isStaffAdmin(user as AnyUser);
   if (!ok) return <Navigate to="/profile/me" replace />;
 
+  return <>{children}</>;
+}
+
+/** Gate: SBT access — sbtEnabled OR Admin/HR bypass */
+function SBTGuard({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const isAdminOrHR = hasAnyRole(user as AnyUser, ["Admin", "SuperAdmin", "HR"]);
+  if (!isAdminOrHR && !(user as any)?.sbtEnabled) {
+    return <Navigate to="/dashboard/employee" replace />;
+  }
+  return <>{children}</>;
+}
+
+/** Gate: SBT L1 Requestor access — sbtRole L1 or BOTH */
+function SBTL1Guard({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const role = (user as any)?.sbtRole;
+  if (role !== "L1" && role !== "BOTH") {
+    return <Navigate to="/sbt/flights" replace />;
+  }
+  return <>{children}</>;
+}
+
+/** Gate: SBT L2 Booker access — sbtRole L2 or BOTH */
+function SBTL2Guard({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const role = (user as any)?.sbtRole;
+  const isWL = hasAnyRole(user as AnyUser, ["WorkspaceLeader"]);
+  if (role !== "L2" && role !== "BOTH" && !isWL) {
+    return <Navigate to="/sbt/flights" replace />;
+  }
+  return <>{children}</>;
+}
+
+/** Gate: Block sbtEnabled users from approval request flow (they book directly via SBT) */
+function ApprovalGuard({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  if ((user as any)?.sbtEnabled === true) {
+    return <Navigate to="/sbt/flights" replace />;
+  }
   return <>{children}</>;
 }
 
@@ -440,7 +509,9 @@ const router = createBrowserRouter([
         element: (
           <Protected>
             <CustomerOnly>
-              <ApprovalNew />
+              <ApprovalGuard>
+                <ApprovalNew />
+              </ApprovalGuard>
             </CustomerOnly>
           </Protected>
         ),
@@ -450,7 +521,9 @@ const router = createBrowserRouter([
         element: (
           <Protected>
             <CustomerOnly>
-              <ApprovalMine />
+              <ApprovalGuard>
+                <ApprovalMine />
+              </ApprovalGuard>
             </CustomerOnly>
           </Protected>
         ),
@@ -601,7 +674,219 @@ const router = createBrowserRouter([
         path: "sbt/flights",
         element: (
           <Protected>
-            <SBTFlightSearch />
+            <SBTGuard>
+              <SBTFlightSearch />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/flights/book",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTFlightBook />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/flights/book/fare-validation",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTFareValidation />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/flights/book/passengers",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTPassengers />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/flights/book/seats",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTSeats />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/flights/book/extras",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTExtras />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/flights/book/review",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTReview />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/flights/book/confirmed",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTConfirmed />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/flights/bookings",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTBookings />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/hotels",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTHotelSearch />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/hotels/detail",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTHotelDetail />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/hotels/book/guests",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTHotelGuests />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/hotels/book/review",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTHotelReview />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/hotels/book/confirmed",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTHotelConfirmed />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/hotels/bookings",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTHotelBookings />
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+
+      /* -------- ✅ SBT Two-Tier Flow (L1 + L2) -------- */
+      {
+        path: "sbt/request",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTL1Guard>
+                <SBTRequestForm />
+              </SBTL1Guard>
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/my-requests",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTL1Guard>
+                <SBTMyRequests />
+              </SBTL1Guard>
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+      {
+        path: "sbt/inbox",
+        element: (
+          <Protected>
+            <SBTGuard>
+              <SBTL2Guard>
+                <SBTInbox />
+              </SBTL2Guard>
+            </SBTGuard>
+          </Protected>
+        ),
+      },
+
+      /* -------- ✅ SBT Admin — Ticket Offer Manager -------- */
+      {
+        path: "admin/sbt/offers",
+        element: (
+          <Protected roles={["Admin", "SuperAdmin"]}>
+            <SBTOfferManager />
+          </Protected>
+        ),
+      },
+
+      /* -------- ✅ Workspace Permissions -------- */
+      {
+        path: "workspace/permissions",
+        element: (
+          <Protected>
+            <React.Suspense fallback={<div className="p-8 text-center text-gray-400">Loading…</div>}>
+              <WorkspacePermissions />
+            </React.Suspense>
+          </Protected>
+        ),
+      },
+
+      /* -------- ✅ Billing (Admin full access / SBT users scoped to own company) -------- */
+      {
+        path: "admin/billing",
+        element: (
+          <Protected>
+            <AdminBilling />
           </Protected>
         ),
       },

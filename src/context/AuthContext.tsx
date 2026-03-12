@@ -24,6 +24,7 @@ export type User = {
   customerId?: string;
   businessId?: string;
   customerMemberRole?: string;
+  sbtEnabled?: boolean;
 };
 
 export type AuthCtx = {

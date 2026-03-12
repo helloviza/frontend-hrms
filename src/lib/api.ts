@@ -138,16 +138,26 @@ async function safeReadBody(res: Response) {
   }
 }
 
-async function readErrorText(res: Response) {
+function buildApiError(message: string, code?: string): Error {
+  const err: any = new Error(message);
+  if (code) err.code = code;
+  return err;
+}
+
+async function throwApiError(res: Response): Promise<never> {
   const body = await safeReadBody(res);
+  let message = `Request failed: ${res.status}`;
+  let code: string | undefined;
 
   if (body && typeof body === "object") {
     const anyBody: any = body;
-    return anyBody?.error || anyBody?.message || JSON.stringify(anyBody);
+    message = anyBody?.error || anyBody?.message || JSON.stringify(anyBody);
+    code = anyBody?.code;
+  } else if (typeof body === "string" && body.trim()) {
+    message = body;
   }
 
-  if (typeof body === "string" && body.trim()) return body;
-  return `Request failed: ${res.status}`;
+  throw buildApiError(message, code);
 }
 
 async function ensureRefreshed(): Promise<boolean> {
@@ -227,7 +237,7 @@ async function request<T = any>(
     throw new Error("Session expired. Please log in again.");
   }
 
-  if (!res.ok) throw new Error(await readErrorText(res));
+  if (!res.ok) await throwApiError(res);
 
   const data = await safeReadBody(res);
 
@@ -269,7 +279,7 @@ async function requestForm<T = any>(
     throw new Error("Session expired. Please log in again.");
   }
 
-  if (!res.ok) throw new Error(await readErrorText(res));
+  if (!res.ok) await throwApiError(res);
 
   const data = await safeReadBody(res);
   if (data == null) return {} as T;
